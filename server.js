@@ -532,9 +532,24 @@ app.get('/api/server-info', async (req, res) => {
   }
 });
 
+app.get('/api/results-data/:name', (req, res) => {
+  const filePath = path.join(__dirname, 'results', req.params.name);
+  if (fs.existsSync(filePath)) {
+    res.json(JSON.parse(fs.readFileSync(filePath)));
+  } else {
+    res.status(404).send('Result not found');
+  }
+});
+
 app.get('/api/export-results', (req, res) => {
+  const pin = req.query.pin;
+  const session = activeSessions[pin];
+  if (!session) return res.status(400).send('Session not found or PIN missing');
+  
+  const students = session.students;
   if (students.length === 0) return res.status(400).send('No students to export');
   
+  const activeTest = session.test;
   const totalPossibleScore = activeTest ? activeTest.questions.reduce((sum, q) => sum + (q.score || 1), 0) : 1;
   const totalQuestions = activeTest ? activeTest.questions.length : 0;
   
@@ -545,8 +560,8 @@ app.get('/api/export-results', (req, res) => {
   
   students.forEach((s, index) => {
     const rank = sortedStudents.findIndex(ss => ss.name === s.name) + 1;
-    const correctCount = Object.values(s.results).filter(r => r.isCorrect).length;
-    const skippedCount = Object.values(s.results).filter(r => r.answer === 'ПРОПУЩЕНО').length;
+    const correctCount = s.results ? Object.values(s.results).filter(r => r.isCorrect).length : 0;
+    const skippedCount = s.results ? Object.values(s.results).filter(r => r.answer === 'ПРОПУЩЕНО').length : 0;
     const incorrectCount = totalQuestions - correctCount - skippedCount;
     
     // 12-point grade calculation
@@ -554,7 +569,7 @@ app.get('/api/export-results', (req, res) => {
     
     // Time spent
     const endTime = s.endTime || Date.now();
-    const durationMs = endTime - s.startTime;
+    const durationMs = endTime - (s.startTime || Date.now());
     const minutes = Math.floor(durationMs / 60000);
     const seconds = Math.floor((durationMs % 60000) / 1000);
     const timeSpent = `${minutes}хв ${seconds}с`;
@@ -566,7 +581,7 @@ app.get('/api/export-results', (req, res) => {
   });
 
   res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', 'attachment; filename=results.csv');
+  res.setHeader('Content-Disposition', `attachment; filename=results_${pin}.csv`);
   res.send('\uFEFF' + csv);
 });
 

@@ -191,6 +191,20 @@ function renderTestList() {
     `).join('');
 }
 
+window.goHome = () => {
+    navigateTo('');
+    document.getElementById('test-settings-section').classList.add('hidden');
+    createSection.classList.add('hidden');
+    activeSection.classList.add('hidden');
+    archiveSection.classList.add('hidden');
+    document.getElementById('sessions-list-section').classList.remove('hidden');
+    listSection.classList.remove('hidden');
+    
+    document.getElementById('stop-test-btn').classList.remove('hidden');
+    const closeBtn = document.getElementById('close-results-btn');
+    if (closeBtn) closeBtn.classList.add('hidden');
+};
+
 window.viewSession = (pin) => {
     socket.emit('teacher_view_session', pin);
 };
@@ -256,6 +270,16 @@ function attachListeners() {
         document.getElementById('test-settings-section').classList.add('hidden');
         listSection.classList.remove('hidden');
     });
+    btn('cancel-settings-btn', () => {
+        document.getElementById('test-settings-section').classList.add('hidden');
+        listSection.classList.remove('hidden');
+    });
+    btn('export-excel-btn', () => {
+        if (activeTestPin) {
+            window.location.href = `/api/export-results?pin=${activeTestPin}`;
+        }
+    });
+
     btn('stop-test-btn', () => { 
         if (activeTestPin) {
             window.stopSession(activeTestPin);
@@ -274,6 +298,9 @@ function attachListeners() {
     btn('back-to-tests-btn', () => {
         archiveSection.classList.add('hidden');
         listSection.classList.remove('hidden');
+    });
+    btn('close-results-btn', () => {
+        if (window.closeArchivedResult) window.closeArchivedResult();
     });
     
     // Folder Controls
@@ -327,10 +354,66 @@ function showActiveSession(data) {
 async function refreshResults() {
     const res = await fetch('/api/results');
     const files = await res.json();
-    resultsList.innerHTML = files.map(f => `<div>${f.name} <button onclick="deleteResult('${f.path}')">X</button></div>`).join('');
+    resultsList.innerHTML = files.map(f => `
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:15px; margin-bottom: 10px; border-left: 4px solid var(--primary);">
+            <strong style="word-break: break-all;">📄 ${f.name}</strong>
+            <div style="display:flex; gap:5px; flex-shrink: 0; margin-left: 10px;">
+                <button onclick="viewArchivedResult('${f.name}')" style="background:var(--primary); padding: 8px 15px;">👁️ Відкрити</button>
+                <button onclick="deleteResult('${f.name}')" style="background:var(--error); padding: 8px 15px;">X</button>
+            </div>
+        </div>
+    `).join('');
 }
 
-window.deleteResult = async (path) => { await fetch(`/api/results/${path}`, { method: 'DELETE' }); refreshResults(); };
+window.viewArchivedResult = async (filename) => {
+    try {
+        const res = await fetch(`/api/results-data/${filename}`);
+        if (!res.ok) throw new Error('Cannot load JSON');
+        const sessionData = await res.json();
+        
+        document.getElementById('results-archive-section').classList.add('hidden');
+        document.getElementById('stop-test-btn').classList.add('hidden');
+        
+        const closeBtn = document.getElementById('close-results-btn');
+        if (closeBtn) closeBtn.classList.remove('hidden');
+        
+        document.getElementById('active-test-name').innerText = (sessionData.test && sessionData.test.title) || filename;
+        
+        activeTest = sessionData.test || { questions: [] };
+        activeTestPin = null; // Important!
+        
+        activeSection.classList.remove('hidden');
+        
+        if (sessionData.students) {
+            updateProgressGrid(sessionData.students);
+            updateAnalyticsChart(sessionData.students, activeTest.questions);
+        } else {
+            updateProgressGrid([]);
+            updateAnalyticsChart([], activeTest.questions);
+        }
+    } catch(e) {
+        alert('Помилка завантаження файлу: ' + e.message);
+    }
+};
+
+window.closeArchivedResult = () => {
+    activeSection.classList.add('hidden');
+    document.getElementById('results-archive-section').classList.remove('hidden');
+    document.getElementById('stop-test-btn').classList.remove('hidden');
+    
+    const closeBtn = document.getElementById('close-results-btn');
+    if (closeBtn) closeBtn.classList.add('hidden');
+    
+    activeTest = null;
+    activeTestPin = null;
+};
+
+window.deleteResult = async (path) => {
+    if (confirm('Видалити цей результат?')) {
+        await fetch(`/api/results/${path}`, { method: 'DELETE' }); 
+        refreshResults(); 
+    }
+};
 window.openAiGenerator = () => alert('В розробці');
 
 function updateAnalyticsChart(students, testQuestions) {
