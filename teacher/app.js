@@ -20,6 +20,7 @@ let currentPath = '';
 let editingTest = null;
 let currentTestToStart = null;
 let analyticsChart = null;
+let currentViewedArchive = null;
 
 // DOM Elements
 let testList, breadcrumbs, listSection, createSection, activeSection, archiveSection, resultsList, builder;
@@ -200,6 +201,7 @@ window.goHome = () => {
     document.getElementById('sessions-list-section').classList.remove('hidden');
     listSection.classList.remove('hidden');
     
+    currentViewedArchive = null;
     document.getElementById('stop-test-btn').classList.remove('hidden');
     const closeBtn = document.getElementById('close-results-btn');
     if (closeBtn) closeBtn.classList.add('hidden');
@@ -277,6 +279,8 @@ function attachListeners() {
     btn('export-excel-btn', () => {
         if (activeTestPin) {
             window.location.href = `/api/export-results?pin=${activeTestPin}`;
+        } else if (currentViewedArchive) {
+            window.location.href = `/api/export-results?filename=${currentViewedArchive}`;
         }
     });
 
@@ -380,7 +384,8 @@ window.viewArchivedResult = async (filename) => {
         document.getElementById('active-test-name').innerText = (sessionData.test && sessionData.test.title) || filename;
         
         activeTest = sessionData.test || { questions: [] };
-        activeTestPin = null; // Important!
+        activeTestPin = null; 
+        currentViewedArchive = filename;
         
         activeSection.classList.remove('hidden');
         
@@ -406,6 +411,7 @@ window.closeArchivedResult = () => {
     
     activeTest = null;
     activeTestPin = null;
+    currentViewedArchive = null;
 };
 
 window.deleteResult = async (path) => {

@@ -549,13 +549,31 @@ app.get('/api/results-data/:name', (req, res) => {
 
 app.get('/api/export-results', (req, res) => {
   const pin = req.query.pin;
-  const session = activeSessions[pin];
-  if (!session) return res.status(400).send('Session not found or PIN missing');
+  const filename = req.query.filename;
+  let sessionData = null;
+
+  if (pin && activeSessions[pin]) {
+    const session = activeSessions[pin];
+    sessionData = {
+      test: session.test,
+      students: session.students,
+      pin: session.pin
+    };
+  } else if (filename) {
+    const filePath = path.join(__dirname, 'results', filename.replace(/\.\./g, ''));
+    if (fs.existsSync(filePath)) {
+      sessionData = JSON.parse(fs.readFileSync(filePath));
+    }
+  }
+
+  if (!sessionData || !sessionData.students || sessionData.students.length === 0) {
+    return res.status(400).send('No data to export');
+  }
   
-  const students = session.students;
-  if (students.length === 0) return res.status(400).send('No students to export');
-  
-  const activeTest = session.test;
+  const activeTest = sessionData.test;
+  const students = sessionData.students;
+  const exportPin = sessionData.pin || 'archived';
+
   const totalPossibleScore = activeTest ? activeTest.questions.reduce((sum, q) => sum + (q.score || 1), 0) : 1;
   const totalQuestions = activeTest ? activeTest.questions.length : 0;
   
@@ -587,7 +605,7 @@ app.get('/api/export-results', (req, res) => {
   });
 
   res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', `attachment; filename=results_${pin}.csv`);
+  res.setHeader('Content-Disposition', `attachment; filename=results_${exportPin}.csv`);
   res.send('\uFEFF' + csv);
 });
 
