@@ -193,6 +193,8 @@ function attachListeners() {
         createSection.classList.add('hidden'); listSection.classList.remove('hidden'); refreshTests();
     });
     btn('cancel-create-btn', () => { createSection.classList.add('hidden'); listSection.classList.remove('hidden'); });
+    
+    // Test execution settings
     btn('start-with-settings-btn', () => {
         const settings = { 
             pin: document.getElementById('test-pin').value || null,
@@ -213,6 +215,48 @@ function attachListeners() {
         activeSection.classList.add('hidden'); 
         listSection.classList.remove('hidden'); 
     });
+
+    // Archive
+    btn('show-results-btn', () => {
+        listSection.classList.add('hidden');
+        archiveSection.classList.remove('hidden');
+        refreshResults();
+    });
+    btn('back-to-tests-btn', () => {
+        archiveSection.classList.add('hidden');
+        listSection.classList.remove('hidden');
+    });
+    
+    // Folder Controls
+    const folderGroup = document.getElementById('folder-input-group');
+    const folderBtn = document.getElementById('show-folder-input-btn');
+    
+    if (folderBtn) {
+        btn('show-folder-input-btn', () => {
+            folderGroup.classList.remove('hidden');
+            folderBtn.classList.add('hidden');
+            document.getElementById('new-folder-name').focus();
+        });
+        btn('cancel-folder-btn', () => {
+            folderGroup.classList.add('hidden');
+            folderBtn.classList.remove('hidden');
+            document.getElementById('new-folder-name').value = '';
+        });
+        btn('confirm-folder-btn', async () => {
+            const name = document.getElementById('new-folder-name').value.trim();
+            if (!name) return;
+            const targetPath = currentPath ? `${currentPath}/${name}` : name;
+            await fetch('/api/tests/folder', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ folder: targetPath })
+            });
+            folderGroup.classList.add('hidden');
+            folderBtn.classList.remove('hidden');
+            document.getElementById('new-folder-name').value = '';
+            refreshTests();
+        });
+    }
 }
 
 function renderBuilder() {

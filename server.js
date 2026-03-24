@@ -371,6 +371,24 @@ app.get('/api/student/history', (req, res) => {
 });
 
 // API for Tests Management
+app.post('/api/tests/folder', (req, res) => {
+    try {
+        const folderName = req.body.folder;
+        if (!folderName) return res.status(400).json({ error: 'Folder name is required' });
+        
+        // Anti-directory traversal protection
+        const cleanName = folderName.replace(/\.\./g, '');
+        const targetDir = path.join(testsDir, cleanName);
+        
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
+        }
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/tests', (req, res) => {
   try {
     const testsDir = path.join(__dirname, 'tests');

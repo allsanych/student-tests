@@ -16,42 +16,47 @@
 <body>
     <div class="watermark"></div>
     <div class="container">
-        <header class="card" style="display: flex; justify-content: space-between; align-items: center;">
+        <header class="card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
             <div style="display: flex; align-items: center;">
                 <img src="/media/logo.png" class="header-logo" alt="Logo">
                 <div>
                     <h1 style="margin-bottom: 0;">Панель Вчителя</h1>
-                <div id="connection-status" style="color: var(--success); font-weight: bold;">Очікування...</div>
+                    <div id="connection-status" style="color: var(--success); font-weight: bold;">Очікування...</div>
+                </div>
             </div>
+            
             <div id="join-info" style="display: flex; align-items: center; gap: 1rem; background: #f8faff; padding: 10px; border-radius: 8px; border: 1px solid #e0e7ff;">
-                <div style="text-align: right;">
+                <div style="text-align: right; max-width: 250px;">
                     <div style="font-size: 0.7rem; color: #6366f1; font-weight: bold; text-transform: uppercase;">Приєднатися до тесту:</div>
                     <a id="join-link" href="#" target="_blank" style="font-size: 0.85rem; color: var(--accent); text-decoration: none; word-break: break-all; font-family: monospace;">завантаження...</a>
                     <div id="tunnel-password-info" class="hidden" style="font-size: 0.7rem; color: #ef4444; margin-top: 4px; font-weight: bold;"></div>
                 </div>
-                <div id="qrcode-container" style="background: white; padding: 5px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div id="qrcode-container" style="background: white; padding: 5px; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); cursor: pointer;">
                     <img id="qrcode-img" src="" alt="QR Code" style="width: 70px; height: 70px; display: block;">
                 </div>
             </div>
-            <div id="status-bar" style="display: flex; gap: 0.5rem; align-items: center;">
-                <button id="create-btn">Створити тест</button>
-                <div id="new-folder-controls" style="display: inline-block;">
-                    <button id="show-folder-input-btn" style="background-color: var(--accent);">Нова папка</button>
-                    <button id="show-results-btn" style="background-color: #64748b;">Архів результатів</button>
-                    <div id="folder-input-group" class="hidden" style="display: inline-flex; gap: 0.5rem;">
-                        <input type="text" id="new-folder-name" placeholder="Назва папки" style="width: 120px; margin-bottom: 0;">
-                        <button id="confirm-folder-btn" style="background-color: var(--success); padding: 0.5rem 1rem;">OK</button>
-                        <button id="cancel-folder-btn" style="background-color: var(--error); padding: 0.5rem 1rem;">X</button>
-                    </div>
-                </div>
+            
+            <div id="status-bar" style="display: flex; align-items: center;">
+                <button id="create-btn" style="font-size: 1.1rem; padding: 0.75rem 1.5rem; box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.4);">+ Створити тест</button>
             </div>
         </header>
 
         <section id="test-list-section" class="card">
-            <div id="breadcrumbs" style="margin-bottom: 1rem; font-weight: bold; color: var(--primary);">
-                <span>/</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #eee; padding-bottom: 10px; flex-wrap: wrap; gap: 10px;">
+                <div id="breadcrumbs" style="font-weight: bold; color: var(--primary); font-size: 1.1rem; display: flex; align-items: center;">
+                    <span>/</span>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                    <div id="folder-input-group" class="hidden" style="display: flex; gap: 0.5rem; align-items: center;">
+                        <input type="text" id="new-folder-name" placeholder="Назва папки" style="width: 150px; margin-bottom: 0; padding: 5px;">
+                        <button id="confirm-folder-btn" style="background-color: var(--success); padding: 5px 10px;">OK</button>
+                        <button id="cancel-folder-btn" style="background-color: var(--error); padding: 5px 10px;">X</button>
+                    </div>
+                    <button id="show-folder-input-btn" class="secondary" style="padding: 5px 10px;">📁 Нова папка</button>
+                    <button id="show-results-btn" class="secondary" style="padding: 5px 10px;">📊 Архів результатів</button>
+                </div>
             </div>
-            <h2>Доступні тести</h2>
+            <h2 style="margin-top: 0;">Доступні тести</h2>
             <div id="test-list"></div>
         </section>
 
