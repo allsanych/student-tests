@@ -106,6 +106,7 @@ app.use('/media', express.static(path.join(__dirname, 'media')));
 
 // Storage for active session data
 const activeSessions = {}; // Maps PIN -> { id, pin, test, settings, path, students, fileName }
+const saveTimeouts = {}; // Maps PIN -> timeoutId for debounced saving
 
 // Socket.io Logic
 io.on('connection', (socket) => {
@@ -261,6 +262,13 @@ io.on('connection', (socket) => {
       if (Object.keys(student.results).length === student.questions.length) {
           student.endTime = Date.now();
           autoSaveSession(session.pin);
+      } else {
+          // Debounced save for progress
+          if (saveTimeouts[session.pin]) clearTimeout(saveTimeouts[session.pin]);
+          saveTimeouts[session.pin] = setTimeout(() => {
+              autoSaveSession(session.pin);
+              delete saveTimeouts[session.pin];
+          }, 5000); // Save every 5 seconds if there are updates
       }
 
       io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
@@ -347,11 +355,25 @@ function checkCorrectness(provided, actual) {
   });
 
   socket.on('stop_test_broadcast', (pin) => {
-    if (!pin || !activeSessions[pin]) return;
-    autoSaveSession(pin);
-    io.to(`session_${pin}`).emit('stop_test');
-    delete activeSessions[pin];
-    broadcastSessions();
+    console.log(`[SESSION] Stop request received for PIN: ${pin}`);
+    if (!pin || !activeSessions[pin]) {
+        console.log(`[SESSION] Stop aborted: Session ${pin} not found or invalid PIN.`);
+        return;
+    }
+    
+    try {
+        if (saveTimeouts[pin]) clearTimeout(saveTimeouts[pin]);
+        autoSaveSession(pin);
+        io.to(`session_${pin}`).emit('stop_test');
+        console.log(`[SESSION] Stop event emitted to room session_${pin}`);
+        
+        delete activeSessions[pin];
+        delete saveTimeouts[pin];
+        broadcastSessions();
+        console.log(`[SESSION] Session ${pin} successfully removed from active list.`);
+    } catch (err) {
+        console.error(`[SESSION] ERROR during stop_test_broadcast for ${pin}:`, err);
+    }
   });
 
   socket.on('finish_test', () => {

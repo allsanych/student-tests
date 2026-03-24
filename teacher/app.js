@@ -212,7 +212,13 @@ window.viewSession = (pin) => {
 };
 
 window.stopSession = (pin) => {
+    console.log(`[UI] Attempting to stop session: ${pin}`);
+    if (!socket || !socket.connected) {
+        alert('❌ Помилка: немає зв\'язку з сервером. Неможливо зупинити тест зараз.');
+        return;
+    }
     if (confirm('Зупинити тест? Результати будуть збережені автоматично.')) {
+        console.log(`[UI] Sending stop_test_broadcast for PIN: ${pin}`);
         socket.emit('stop_test_broadcast', pin);
         if (activeTestPin === pin) {
             if (analyticsChart) { analyticsChart.destroy(); analyticsChart = null; }
@@ -220,7 +226,11 @@ window.stopSession = (pin) => {
             listSection.classList.remove('hidden');
             activeTestPin = null;
             activeTest = null;
+        } else {
+            console.log(`[UI] Test stopped from sessions list. Waiting for server broadcast to refresh UI.`);
         }
+    } else {
+        console.log(`[UI] Stop cancelled by user.`);
     }
 };
 
