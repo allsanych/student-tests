@@ -26,6 +26,7 @@ document.getElementById('join-btn').onclick = (e) => {
     const name = document.getElementById('student-name').value.trim();
     const pin = document.getElementById('student-pin').value.trim();
     if (!name) return alert('Будь ласка, введіть прізвище та ім\'я');
+    if (!pin) return alert('Будь ласка, введіть PIN-код або Групу!');
     
     // Enter fullscreen
     try {
@@ -47,24 +48,24 @@ document.getElementById('join-btn').onclick = (e) => {
     socket.emit('student_join', { name, pin, token: getStudentToken() });
 };
 
-// Auto-populate and optional auto-join
+// Auto-populate
 window.addEventListener('load', () => {
     const savedName = localStorage.getItem('studentName');
     const savedPin = localStorage.getItem('studentPin');
     if (savedName) {
-        document.getElementById('student-name').value = savedName;
-        if (savedPin) document.getElementById('student-pin').value = savedPin;
-        
-        // Small delay to ensure socket is connected
-        setTimeout(() => {
-            if (savedName && socket.connected) {
-                socket.emit('student_join', { name: savedName, pin: savedPin, token: getStudentToken() });
-            }
-        }, 1000);
+        document.getElementById('student-name').value = savedName.replace(/ \(Спроба \d+\)$/, '');
+    }
+    if (savedPin) {
+        document.getElementById('student-pin').value = savedPin;
     }
 });
 
-socket.on('join_error', (msg) => { alert(msg); });
+socket.on('join_error', (msg) => { 
+    alert(msg); 
+    const btn = document.getElementById('join-btn');
+    btn.disabled = false;
+    btn.innerText = 'Приєднатися (На весь екран)';
+});
 
 socket.on('start_test', (test) => {
     currentTest = test;
@@ -98,9 +99,38 @@ socket.on('test_locked', (reason) => {
     finishedSection.innerHTML = `<h2>🚫 ${reason}</h2><p>Ваш поточний результат анульовано. Зверніться до викладача.</p>`;
     finishedSection.classList.remove('hidden');
     cheatWarningBanner.classList.add('hidden');
+    
+    const tryBtn = document.createElement('button');
+    tryBtn.innerText = 'Спробувати знову';
+    tryBtn.style.marginTop = '20px';
+    tryBtn.onclick = () => window.location.reload();
+    finishedSection.appendChild(tryBtn);
+    
     document.getElementById('feedback-overlay').classList.add('hidden');
 });
 
+const retakeBtn = document.getElementById('retake-btn');
+if (retakeBtn) {
+    retakeBtn.onclick = () => {
+        let baseName = localStorage.getItem('studentName') || '';
+        baseName = baseName.replace(/ \(Спроба \d+\)$/, '');
+        
+        let attempt = parseInt(localStorage.getItem('studentAttempt') || '1');
+        attempt++;
+        localStorage.setItem('studentAttempt', attempt.toString());
+        
+        const newName = `${baseName} (Спроба ${attempt})`;
+        document.getElementById('student-name').value = newName;
+        
+        // Reset UI
+        finishedSection.classList.add('hidden');
+        joinSection.classList.remove('hidden');
+        
+        const joinBtn = document.getElementById('join-btn');
+        joinBtn.disabled = false;
+        joinBtn.innerText = 'Приєднатися (На весь екран)';
+    };
+}
 function triggerCheatWarning() {
     if (!currentTest || !currentTest.questions[currentQIndex]) return;
     

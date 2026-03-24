@@ -100,10 +100,8 @@ app.use('/student', express.static(path.join(__dirname, 'student')));
 app.use('/media', express.static(path.join(__dirname, 'media')));
 
 // Storage for active session data
-let activeTest = null;
-let activeTestPath = null;
-let currentSessionId = null;
-let students = []; // { id, name, answers, status, sessionId }
+// Storage for active session data
+const activeSessions = {}; // Maps PIN -> { id, pin, test, settings, path, students, fileName }
 
 // Socket.io Logic
 io.on('connection', (socket) => {
@@ -111,28 +109,51 @@ io.on('connection', (socket) => {
     fs.appendFileSync('server.log', `${new Date().toISOString()} - User connected: ${socket.id}\n`);
   } catch (e) {}
 
+  function broadcastSessions() {
+      io.to('teacher_room').emit('sessions_list_update', Object.values(activeSessions).map(s => ({
+          pin: s.pin, title: s.test.title, studentCount: s.students.length
+      })));
+  }
+
   socket.on('teacher_join', () => {
     socket.join('teacher_room');
-    socket.emit('init_state', { activeTest, students });
+    broadcastSessions();
   });
+
+  socket.on('teacher_view_session', (pin) => {
+      const session = activeSessions[pin];
+      if (session) {
+          socket.emit('init_state', { activeTest: session.test, students: session.students, pin });
+      }
+  });
+
+  // Helper for socket events
+  function findStudentSession(socketId) {
+      for (const pin in activeSessions) {
+          const student = activeSessions[pin].students.find(s => s.id === socketId);
+          if (student) return { session: activeSessions[pin], student };
+      }
+      return { session: null, student: null };
+  }
 
   socket.on('student_join', (data) => {
     try {
-        // PIN Validation
-        if (activeTest && activeTest.settings && activeTest.settings.pin) {
-            if (data.pin !== activeTest.settings.pin) {
-                return socket.emit('join_error', 'Невірний PIN-код!');
-            }
+        const pin = data.pin;
+        if (!pin || !activeSessions[pin]) {
+            return socket.emit('join_error', 'Невірний PIN-код або тест не знайдено!');
         }
-
+        
+        const session = activeSessions[pin];
+        const activeTest = session.test;
+        
         let studentQuestions = activeTest ? [...activeTest.questions] : [];
         
         // Randomization Logic
-        if (activeTest && activeTest.settings) {
-          if (activeTest.settings.shuffleQuestions || activeTest.settings.pickCount) {
+        if (session.settings) {
+          if (session.settings.shuffleQuestions || session.settings.pickCount) {
             studentQuestions = shuffleArray(studentQuestions);
           }
-          if (activeTest.settings.shuffleAnswers) {
+          if (session.settings.shuffleAnswers) {
             studentQuestions = studentQuestions.map(q => {
               if (q.options && Array.isArray(q.options)) {
                 return { ...q, options: shuffleArray(q.options) };
@@ -140,13 +161,13 @@ io.on('connection', (socket) => {
               return q;
             });
           }
-          if (activeTest.settings.pickCount && activeTest.settings.pickCount < studentQuestions.length) {
-              studentQuestions = studentQuestions.slice(0, activeTest.settings.pickCount);
+          if (session.settings.pickCount && session.settings.pickCount < studentQuestions.length) {
+              studentQuestions = studentQuestions.slice(0, session.settings.pickCount);
           }
         }
 
         // Check if student with this name already exists in this session
-        let student = students.find(s => s.name === data.name);
+        let student = session.students.find(s => s.name === data.name);
         
         if (student) {
             // Re-joining existing student: update socket ID and questions
@@ -172,27 +193,25 @@ io.on('connection', (socket) => {
               startTime: Date.now(),
               endTime: null
             };
-            students.push(student);
+            session.students.push(student);
         }
         
-        socket.join('student_room');
-        io.to('teacher_room').emit('student_update', students);
+        socket.join(`session_${pin}`);
+        io.to('teacher_room').emit('student_update', { pin: pin, students: session.students });
         
         if (activeTest) {
           socket.emit('start_test', { ...activeTest, questions: student.questions });
         }
     } catch (e) {
-        try {
-            fs.appendFileSync('server.log', `${new Date().toISOString()} - Error in student_join: ${e}\n`);
-        } catch (err) {}
+        try { fs.appendFileSync('server.log', `${new Date().toISOString()} - Error in student_join: ${e}\n`); } catch (err) {}
         socket.emit('join_error', 'Помилка на сервері при спробі входу.');
     }
   });
 
   socket.on('submit_answer', (data) => {
-    const student = students.find(s => s.id === socket.id);
-    if (student && activeTest) {
-      const q = activeTest.questions.find(q => q.id === data.questionId);
+    const { session, student } = findStudentSession(socket.id);
+    if (student && session && session.test) {
+      const q = session.test.questions.find(q => q.id === data.questionId);
       if (!q) return;
 
       const isViolated = student.violations.includes(data.questionId);
@@ -217,8 +236,13 @@ io.on('connection', (socket) => {
         totalScore += student.results[qId].score || 0;
       });
       student.score = Math.round(totalScore * 100) / 100;
+      
+      if (Object.keys(student.results).length === student.questions.length) {
+          student.endTime = Date.now();
+          autoSaveSession(session.pin);
+      }
 
-      io.to('teacher_room').emit('student_update', students);
+      io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
     }
   });
 
@@ -239,8 +263,8 @@ function checkCorrectness(provided, actual) {
 }
 
   socket.on('cheat_warning', (data) => {
-    const student = students.find(s => s.id === socket.id);
-    if (student && data.questionId) {
+    const { session, student } = findStudentSession(socket.id);
+    if (student && data.questionId && session) {
       if (!student.violations.includes(data.questionId)) {
         student.violations.push(data.questionId);
         
@@ -248,9 +272,10 @@ function checkCorrectness(provided, actual) {
             student.status = 'disqualified';
             student.score = 0; // Annul score
             socket.emit('test_locked', 'Тест заблоковано через часті спроби списування (вихід за межі тесту 3+ рази)!');
+            autoSaveSession(session.pin);
         }
         
-        io.to('teacher_room').emit('student_update', students);
+        io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
         try {
             fs.appendFileSync('server.log', `${new Date().toISOString()} - Student ${student.name} warned for cheating on question ${data.questionId}. Total violations: ${student.violations.length}\n`);
         } catch (e) {}
@@ -259,72 +284,90 @@ function checkCorrectness(provided, actual) {
   });
 
   socket.on('cheat_detected', () => {
-    // Legacy support or fallback
-    const student = students.find(s => s.id === socket.id);
-    if (student) {
+    const { session, student } = findStudentSession(socket.id);
+    if (student && session) {
       student.status = 'disqualified';
-      student.score = 1;
-      io.to('teacher_room').emit('student_update', students);
+      student.score = 0;
+      autoSaveSession(session.pin);
+      io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
     }
   });
 
   socket.on('start_test_broadcast', (data) => {
-    activeTest = { ...data.test, settings: data.settings };
-    activeTestPath = data.path;
-    currentSessionId = Date.now().toString(36).toUpperCase(); // Unique session ID
+    let pin = data.settings.pin;
+    if (!pin) {
+        pin = Math.floor(1000 + Math.random() * 9000).toString();
+        data.settings.pin = pin;
+    }
     
-    // Clear students for new session
-    students = []; 
+    const sessionId = Date.now().toString(36).toUpperCase();
+    const testName = data.test.title ? data.test.title.replace(/[^a-z0-9а-яіїєґ]/gi, '_') : 'Unnamed';
+    const fileName = `${testName}_${pin}.json`;
+
+    let existingStudents = [];
+    const resultsDir = path.join(__dirname, 'results');
+    const filePath = path.join(resultsDir, fileName);
+    if (fs.existsSync(filePath)) {
+        try {
+            const savedData = JSON.parse(fs.readFileSync(filePath));
+            if (savedData.students) {
+                existingStudents = savedData.students;
+                existingStudents.forEach(s => s.status = 'offline');
+            }
+        } catch(e) {}
+    }
+
+    activeSessions[pin] = {
+        id: sessionId, pin: pin, test: data.test, path: data.path,
+        settings: data.settings, students: existingStudents, fileName: fileName
+    };
     
-    io.to('student_room').emit('start_test', activeTest);
-    try {
-        fs.appendFileSync('server.log', `${new Date().toISOString()} - Test started: ${data.path} Session: ${currentSessionId}\n`);
-    } catch (e) {}
+    broadcastSessions();
   });
 
-  socket.on('stop_test_broadcast', () => {
-    saveResults();
-    activeTest = null;
-    activeTestPath = null;
-    io.to('student_room').emit('stop_test');
+  socket.on('stop_test_broadcast', (pin) => {
+    if (!pin || !activeSessions[pin]) return;
+    autoSaveSession(pin);
+    io.to(`session_${pin}`).emit('stop_test');
+    delete activeSessions[pin];
+    broadcastSessions();
   });
 
   socket.on('finish_test', () => {
-    let student = students.find(s => s.id === socket.id);
-    if (student) {
+    const { session, student } = findStudentSession(socket.id);
+    if (student && session) {
         student.endTime = Date.now();
-        io.to('teacher_room').emit('student_update', students);
+        autoSaveSession(session.pin);
+        io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
     }
   });
 
   socket.on('disconnect', () => {
-    const student = students.find(s => s.id === socket.id);
-    if (student) {
+    const { session, student } = findStudentSession(socket.id);
+    if (student && session) {
       student.status = 'offline';
-      io.to('teacher_room').emit('student_update', students);
+      io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
     }
   });
 });
 
-function saveResults() {
-  if (!activeTest || students.length === 0) return;
+function autoSaveSession(pin) {
+  const session = activeSessions[pin];
+  if (!session || !session.test || session.students.length === 0) return;
   
   const resultsDir = path.join(__dirname, 'results');
   if (!fs.existsSync(resultsDir)) fs.mkdirSync(resultsDir);
   
-  const testName = activeTestPath ? activeTestPath.split('/').pop().replace('.json', '') : 'Unnamed';
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const fileName = `${testName}_${currentSessionId || 'NO_SESSION'}_${timestamp}.json`;
-  
   const sessionData = {
-    test: activeTest,
-    path: activeTestPath,
-    sessionId: currentSessionId,
-    students: students,
+    test: session.test,
+    path: session.path,
+    sessionId: session.id,
+    pin: session.pin,
+    students: session.students,
     timestamp: new Date().toISOString()
   };
   
-  fs.writeFileSync(path.join(resultsDir, fileName), JSON.stringify(sessionData, null, 2));
+  fs.writeFileSync(path.join(resultsDir, session.fileName), JSON.stringify(sessionData, null, 2));
   
   // Save to students_db.json
   try {
@@ -332,24 +375,26 @@ function saveResults() {
       let db = {};
       if (fs.existsSync(dbPath)) db = JSON.parse(fs.readFileSync(dbPath));
       
-      students.forEach(s => {
+      session.students.forEach(s => {
           if (!s.token) return;
           if (!db[s.token]) db[s.token] = { name: s.name, history: [] };
           db[s.token].name = s.name;
-          db[s.token].history.push({
-              testTitle: activeTest.title || testName,
-              score: s.score,
-              date: new Date().toISOString()
-          });
+          const testTitle = session.test.title || 'test';
+          const existingRun = db[s.token].history.find(h => h.testSessionId === session.id);
+          if (existingRun) {
+              existingRun.score = s.score;
+              existingRun.date = new Date().toISOString();
+          } else {
+              db[s.token].history.push({
+                  testTitle: testTitle,
+                  testSessionId: session.id,
+                  score: s.score,
+                  date: new Date().toISOString()
+              });
+          }
       });
       fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
-  } catch (err) {
-      try { fs.appendFileSync('server.log', `${new Date().toISOString()} - Error saving students_db: ${err}\n`); } catch(e){}
-  }
-
-  try {
-    fs.appendFileSync('server.log', `${new Date().toISOString()} - Results saved for session ${currentSessionId}: ${fileName}\n`);
-  } catch (e) {}
+  } catch (err) {}
 }
 
 // API for Student History

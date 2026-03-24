@@ -15,6 +15,7 @@ let socket;
 let tests = [];
 let questions = [];
 let activeTest = null;
+let activeTestPin = null;
 let currentPath = '';
 let editingTest = null;
 let currentTestToStart = null;
@@ -48,11 +49,36 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('connection-status').innerText = '❌ Помилка з\'єднання';
     });
 
+    socket.on('sessions_list_update', (sessions) => {
+        const section = document.getElementById('sessions-list-section');
+        const list = document.getElementById('active-sessions-list');
+        if (!section || !list) return;
+        
+        if (sessions.length === 0) {
+            section.classList.add('hidden');
+        } else {
+            section.classList.remove('hidden');
+            list.innerHTML = sessions.map(s => `
+                <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-left: 4px solid var(--success);">
+                    <div>
+                        <strong style="font-size: 1.1rem;">${s.title}</strong>
+                        <div style="font-size: 0.85rem; color: #666; margin-top: 4px;">PIN-код / Назва: <span style="font-weight: bold; color: var(--accent); font-size: 1rem;">${s.pin}</span> | Студентів онлайн: ${s.studentCount}</div>
+                    </div>
+                    <div style="display: flex; gap: 5px;">
+                        <button onclick="viewSession('${s.pin}')" style="background-color: var(--primary); padding: 5px 10px;">📊 Відкрити</button>
+                        <button onclick="stopSession('${s.pin}')" style="background-color: var(--error); padding: 5px 10px;">🛑 Зупинити</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+    });
+
     socket.on('init_state', (data) => {
         refreshTests();
         updateServerInfo();
         if (data.activeTest) {
             activeTest = data.activeTest;
+            activeTestPin = data.pin;
             showActiveSession(data.activeTest);
         }
         if (data.students) {
@@ -61,9 +87,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    socket.on('student_update', (students) => {
-        updateProgressGrid(students);
-        updateAnalyticsChart(students, activeTest ? activeTest.questions : []);
+    socket.on('student_update', (data) => {
+        if (activeTestPin === data.pin) {
+            updateProgressGrid(data.students);
+            updateAnalyticsChart(data.students, activeTest ? activeTest.questions : []);
+        }
     });
     
     // Initial Load
@@ -163,6 +191,23 @@ function renderTestList() {
     `).join('');
 }
 
+window.viewSession = (pin) => {
+    socket.emit('teacher_view_session', pin);
+};
+
+window.stopSession = (pin) => {
+    if (confirm('Зупинити тест? Результати будуть збережені автоматично.')) {
+        socket.emit('stop_test_broadcast', pin);
+        if (activeTestPin === pin) {
+            if (analyticsChart) { analyticsChart.destroy(); analyticsChart = null; }
+            activeSection.classList.add('hidden');
+            listSection.classList.remove('hidden');
+            activeTestPin = null;
+            activeTest = null;
+        }
+    }
+};
+
 window.startTest = (path) => {
     currentTestToStart = tests.find(t => t.path === path);
     listSection.classList.add('hidden');
@@ -205,15 +250,19 @@ function attachListeners() {
             shuffleAnswers: document.getElementById('shuffle-answers').checked,
             showFeedback: document.getElementById('show-feedback').checked
         };
-        if (analyticsChart) { analyticsChart.destroy(); analyticsChart = null; }
+        // Just emit and hide settings, the sessions_list_update will show the new session
         socket.emit('start_test_broadcast', { test: currentTestToStart.data, settings, path: currentTestToStart.path });
-        showActiveSession(currentTestToStart.data);
+        
+        document.getElementById('test-settings-section').classList.add('hidden');
+        listSection.classList.remove('hidden');
     });
     btn('stop-test-btn', () => { 
-        if (analyticsChart) { analyticsChart.destroy(); analyticsChart = null; }
-        socket.emit('stop_test_broadcast'); 
-        activeSection.classList.add('hidden'); 
-        listSection.classList.remove('hidden'); 
+        if (activeTestPin) {
+            window.stopSession(activeTestPin);
+        } else {
+            activeSection.classList.add('hidden'); 
+            listSection.classList.remove('hidden');
+        }
     });
 
     // Archive

@@ -41,6 +41,14 @@
             </div>
         </header>
 
+        <section id="sessions-list-section" class="card hidden" style="border: 2px solid var(--success); margin-bottom: 20px;">
+            <h2 style="margin-top: 0; color: var(--success); display: flex; align-items: center; gap: 10px;">
+                <span style="display:inline-block; width:12px; height:12px; background:var(--success); border-radius:50%; box-shadow:0 0 8px var(--success); animation: pulse 2s infinite;"></span>
+                Активні запущені тести
+            </h2>
+            <div id="active-sessions-list" style="display: grid; gap: 10px;"></div>
+        </section>
+
         <section id="test-list-section" class="card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid #eee; padding-bottom: 10px; flex-wrap: wrap; gap: 10px;">
                 <div id="breadcrumbs" style="font-weight: bold; color: var(--primary); font-size: 1.1rem; display: flex; align-items: center;">
@@ -84,7 +92,7 @@
                         <option value="per-question">Час на кожне запитання</option>
                     </select>
                     <input type="number" id="timer-value" placeholder="Час у секундах" style="width: 100%; margin-bottom: 10px;" value="60">
-                    <input type="text" id="test-pin" placeholder="PIN-код тесту (опційно)" maxlength="6" style="width: 100%;">
+                    <input type="text" id="test-pin" placeholder="Власний PIN або Група (напр. 31-Е, опційно)" maxlength="15" style="width: 100%;">
                 </div>
             </div>
             <div style="margin-top: 20px;">
