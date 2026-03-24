@@ -460,6 +460,7 @@ app.get('/api/tests', (req, res) => {
     const testsDir = path.join(__dirname, 'tests');
     if (!fs.existsSync(testsDir)) fs.mkdirSync(testsDir);
     const tests = getFiles(testsDir);
+    console.log(`[API] Serving ${tests.length} tests/folders from ${testsDir}`);
     res.json(tests);
   } catch (err) {
     try {
