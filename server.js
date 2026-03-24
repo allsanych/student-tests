@@ -26,7 +26,8 @@ function getFiles(dir, baseDir = dir) {
     const filePath = path.join(dir, dirent.name);
     const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
     if (dirent.isDirectory()) {
-      results.push({ path: relativePath, name: dirent.name, type: 'directory', children: getFiles(filePath, baseDir) });
+      results.push({ path: relativePath, name: dirent.name, type: 'directory' });
+      results = results.concat(getFiles(filePath, baseDir));
     } else if (dirent.name.endsWith('.json')) {
       try {
         let testData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
