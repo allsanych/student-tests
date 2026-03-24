@@ -144,15 +144,26 @@ io.on('connection', (socket) => {
 
   socket.on('student_join', (data) => {
     try {
+        if (!data) throw new Error('No data received in student_join');
         const pin = data.pin;
-        if (!pin || !activeSessions[pin]) {
+        if (!pin) {
+            return socket.emit('join_error', 'Будь ласка, введіть PIN-код.');
+        }
+
+        if (!activeSessions[pin]) {
             return socket.emit('join_error', 'Невірний PIN-код або тест не знайдено!');
         }
         
         const session = activeSessions[pin];
-        const activeTest = session.test;
+        if (!session.students) session.students = [];
         
-        let studentQuestions = activeTest ? [...activeTest.questions] : [];
+        const activeTest = session.test;
+        if (!activeTest || !Array.isArray(activeTest.questions)) {
+            console.error(`ERROR: Test for session ${pin} has no questions!`, activeTest);
+            return socket.emit('join_error', 'Помилка завантаження тесту: немає питань.');
+        }
+        
+        let studentQuestions = [...activeTest.questions];
         
         // Randomization Logic
         if (session.settings) {
@@ -173,17 +184,14 @@ io.on('connection', (socket) => {
         }
 
         // Check if student with this name already exists in this session
-        let student = session.students.find(s => s.name === data.name);
+        let student = session.students.find(s => s && s.name === data.name);
         
         if (student) {
             // Re-joining existing student: update socket ID and questions
             student.id = socket.id;
             student.status = 'online';
             if (!student.startTime) student.startTime = Date.now();
-            if (activeTest) {
-                // If test is active, ensure they have the latest questions
-                student.questions = studentQuestions;
-            }
+            student.questions = studentQuestions; // Refresh questions on join
         } else {
             // New student
             student = { 
@@ -204,13 +212,15 @@ io.on('connection', (socket) => {
         
         socket.join(`session_${pin}`);
         io.to('teacher_room').emit('student_update', { pin: pin, students: session.students });
-        
-        if (activeTest) {
-          socket.emit('start_test', { ...activeTest, questions: student.questions });
-        }
+        socket.emit('start_test', { ...activeTest, questions: student.questions });
+
+        fs.appendFileSync('server.log', `${new Date().toISOString()} - Student ${data.name} joined session ${pin}\n`);
+
     } catch (e) {
-        try { fs.appendFileSync('server.log', `${new Date().toISOString()} - Error in student_join: ${e}\n`); } catch (err) {}
-        socket.emit('join_error', 'Помилка на сервері при спробі входу.');
+        const errLog = `${new Date().toISOString()} - CRITICAL Error in student_join: ${e.stack || e}\n`;
+        console.error(errLog);
+        try { fs.appendFileSync('server.log', errLog); } catch (err) {}
+        socket.emit('join_error', 'Помилка на сервері при спробі входу. Спробуйте ще раз.');
     }
   });
 
