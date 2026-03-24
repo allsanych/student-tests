@@ -100,7 +100,6 @@ app.use('/student', express.static(path.join(__dirname, 'student')));
 app.use('/media', express.static(path.join(__dirname, 'media')));
 
 // Storage for active session data
-// Storage for active session data
 const activeSessions = {}; // Maps PIN -> { id, pin, test, settings, path, students, fileName }
 
 // Socket.io Logic
@@ -118,6 +117,13 @@ io.on('connection', (socket) => {
   socket.on('teacher_join', () => {
     socket.join('teacher_room');
     broadcastSessions();
+    // Also provide initial server info immediately
+    socket.emit('init_state', { 
+        activeTest: null, 
+        students: [], 
+        pin: null,
+        sessionsCount: Object.keys(activeSessions).length 
+    });
   });
 
   socket.on('teacher_view_session', (pin) => {
