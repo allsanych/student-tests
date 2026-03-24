@@ -22,19 +22,23 @@ process.on('unhandledRejection', (reason, promise) => {
 function getFiles(dir, baseDir = dir) {
   let results = [];
   const list = fs.readdirSync(dir, { withFileTypes: true });
-  list.forEach(dirent => {
+  for (const dirent of list) {
     const filePath = path.join(dir, dirent.name);
     const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
     if (dirent.isDirectory()) {
-      results.push({ path: relativePath, name: dirent.name, type: 'directory' });
-      results = results.concat(getFiles(filePath, baseDir));
+      results.push({ path: relativePath, name: dirent.name, type: 'directory', children: getFiles(filePath, baseDir) });
     } else if (dirent.name.endsWith('.json')) {
       try {
+        let testData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        // Normalize if it's just an array of questions
+        if (Array.isArray(testData)) {
+          testData = { title: dirent.name.replace('.json', ''), questions: testData };
+        }
         results.push({
           path: relativePath,
           name: dirent.name,
           type: 'file',
-          data: JSON.parse(fs.readFileSync(filePath))
+          data: testData
         });
       } catch (e) {
         try {
@@ -42,7 +46,7 @@ function getFiles(dir, baseDir = dir) {
         } catch (err) {}
       }
     }
-  });
+  }
   return results;
 }
 
