@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="watermark"></div>
@@ -64,6 +66,10 @@
                     <label class="checkbox-container">
                         <input type="checkbox" id="shuffle-answers"> Перемішати варіанти відповідей
                     </label>
+                    <div style="margin-top: 15px;">
+                        <label style="font-size: 0.9rem; font-weight: bold; color: var(--text-dark);">Видати випадкових питань (з усіх):</label>
+                        <input type="number" id="test-pick-count" placeholder="Кількість (залишіть пустим для всіх)" min="1" style="width: 100%; margin-top: 5px;">
+                    </div>
                 </div>
                 <div>
                     <h3>Часові обмеження</h3>
@@ -112,6 +118,14 @@
             <div id="active-test-info">
                  <h2 id="active-test-name-container">Активна сесія: <span id="active-test-name"></span></h2>
             </div>
+            
+            <div id="analytics-container" class="card" style="margin-top: 15px; margin-bottom: 20px;">
+                <h3 style="text-align: center;">Аналітика успішності за питаннями</h3>
+                <div style="height: 250px; position: relative;">
+                    <canvas id="analyticsChart"></canvas>
+                </div>
+            </div>
+
             <div id="student-monitoring">
                 <h3 id="monitoring-title">Прогрес студентів (<span id="student-count">0</span>)</h3>
                 <div id="students-progress-grid" style="display: grid; gap: 15px; grid-template-columns: 1fr;"></div>

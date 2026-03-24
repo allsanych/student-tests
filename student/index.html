@@ -19,7 +19,7 @@
         .option-label.selected { background: #eef2ff; border-color: var(--primary); border-width: 2px; }
     </style>
 </head>
-<body>
+<body oncontextmenu="return false" oncopy="return false" oncut="return false" onpaste="return false" style="user-select: none;">
     <div class="watermark"></div>
     <div class="container">
         <div class="welcome-banner">
@@ -36,7 +36,13 @@
             <input type="text" id="student-name" placeholder="Напр. Іванов Іван">
             <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">PIN-код (якщо є)</label>
             <input type="text" id="student-pin" placeholder="PIN-код" maxlength="6">
-            <button id="join-btn" style="width: 100%; height: 50px; font-size: 1.1rem;">Приєднатися</button>
+            <button id="join-btn" style="width: 100%; height: 50px; font-size: 1.1rem;">Приєднатися (На весь екран)</button>
+            <button id="history-btn" class="secondary" style="width: 100%; margin-top: 10px; background-color: #f3f4f6; color: #374151; font-weight: bold;">📋 Мої оцінки (Історія)</button>
+            
+            <div id="history-container" class="hidden" style="margin-top: 15px; text-align: left; background: #f8faff; padding: 15px; border-radius: 8px; border: 1px solid #e0e7ff; max-height: 250px; overflow-y: auto;">
+                <h3 style="margin-top: 0; color: var(--primary);">Історія тестувань</h3>
+                <div id="history-list" style="font-size: 0.9rem;"></div>
+            </div>
         </section>
 
         <section id="waiting-section" class="card hidden">

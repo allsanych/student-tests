@@ -13,10 +13,28 @@ let timerInterval = null;
 let timeLeft = 0;
 let perQuestionTimer = false;
 
+function getStudentToken() {
+    let token = localStorage.getItem('studentToken');
+    if (!token) {
+        token = 'std_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+        localStorage.setItem('studentToken', token);
+    }
+    return token;
+}
+
 document.getElementById('join-btn').onclick = (e) => {
     const name = document.getElementById('student-name').value.trim();
     const pin = document.getElementById('student-pin').value.trim();
     if (!name) return alert('Будь ласка, введіть прізвище та ім\'я');
+    
+    // Enter fullscreen
+    try {
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen();
+        } else if (document.documentElement.webkitRequestFullscreen) {
+            document.documentElement.webkitRequestFullscreen();
+        }
+    } catch (e) {}
     
     // Disable button to prevent double clicks
     e.target.disabled = true;
@@ -26,7 +44,7 @@ document.getElementById('join-btn').onclick = (e) => {
     localStorage.setItem('studentName', name);
     localStorage.setItem('studentPin', pin);
     
-    socket.emit('student_join', { name, pin });
+    socket.emit('student_join', { name, pin, token: getStudentToken() });
 };
 
 // Auto-populate and optional auto-join
@@ -40,7 +58,7 @@ window.addEventListener('load', () => {
         // Small delay to ensure socket is connected
         setTimeout(() => {
             if (savedName && socket.connected) {
-                socket.emit('student_join', { name: savedName, pin: savedPin });
+                socket.emit('student_join', { name: savedName, pin: savedPin, token: getStudentToken() });
             }
         }, 1000);
     }
@@ -67,6 +85,17 @@ socket.on('start_test', (test) => {
 socket.on('stop_test', () => {
     clearInterval(timerInterval);
     testSection.classList.add('hidden');
+    finishedSection.classList.remove('hidden');
+    cheatWarningBanner.classList.add('hidden');
+    document.getElementById('feedback-overlay').classList.add('hidden');
+});
+
+socket.on('test_locked', (reason) => {
+    clearInterval(timerInterval);
+    testSection.classList.add('hidden');
+    joinSection.classList.add('hidden');
+    waitingSection.classList.add('hidden');
+    finishedSection.innerHTML = `<h2>🚫 ${reason}</h2><p>Ваш поточний результат анульовано. Зверніться до викладача.</p>`;
     finishedSection.classList.remove('hidden');
     cheatWarningBanner.classList.add('hidden');
     document.getElementById('feedback-overlay').classList.add('hidden');
@@ -175,6 +204,20 @@ function renderQuestion() {
                 <textarea id="text-ans" placeholder="Ваша відповідь..." style="width: 100%; height: 80px; margin-bottom: 10px; padding: 10px; border-radius: 8px; border: 1px solid #ddd;"></textarea>
                 <button onclick="submitText()" style="width: 100%;">Підтвердити</button>
             `;
+        } else if (q.type === 'matching') {
+            const lefts = q.pairs.map(p => p.left);
+            const rights = [...q.pairs.map(p => p.right)].sort(() => Math.random() - 0.5);
+            
+            inputHtml = `<div class="matching-container" style="display: flex; gap: 10px;">
+                <div style="flex: 1;">${lefts.map((l, i) => `<div style="padding: 10px; border: 1px solid var(--primary); margin-bottom: 5px; background: #e0e7ff; border-radius: 8px;">${l}</div>`).join('')}</div>
+                <div style="flex: 1;">${lefts.map((l, idx) => `
+                    <select id="match-ans-${idx}" style="width: 100%; padding: 10px; margin-bottom: 5px; border-radius: 8px;" data-left="${l}">
+                        <option value="">-- Оберіть пару --</option>
+                        ${rights.map(r => `<option value="${r}">${r}</option>`).join('')}
+                    </select>
+                `).join('')}</div>
+            </div>
+            <button onclick="submitMatching()" style="width: 100%; margin-top: 10px;">Підтвердити</button>`;
         }
 
         qContainer.innerHTML = `
@@ -240,6 +283,18 @@ window.submitText = () => {
     submitAnswer(val);
 };
 
+window.submitMatching = () => {
+    const q = currentTest.questions[currentQIndex];
+    if (!q.pairs) return;
+    const ans = {};
+    for (let i = 0; i < q.pairs.length; i++) {
+        const select = document.getElementById(`match-ans-${i}`);
+        if (!select.value) return alert('Знайдіть пару для всіх елементів');
+        ans[select.dataset.left] = select.value;
+    }
+    submitAnswer(ans);
+};
+
 window.submitAnswer = (ans) => {
     if (perQuestionTimer) clearInterval(timerInterval);
     
@@ -261,6 +316,12 @@ function checkCorrectness(provided, actual) {
     if (Array.isArray(actual)) {
         if (!Array.isArray(provided)) return false;
         return actual.length === provided.length && actual.every(v => provided.includes(v));
+    }
+    if (typeof actual === 'object' && actual !== null) {
+        if (typeof provided !== 'object' || provided === null) return false;
+        const keys = Object.keys(actual);
+        if (keys.length !== Object.keys(provided).length) return false;
+        return keys.every(k => checkCorrectness(provided[k], actual[k]));
     }
     let pStr = String(provided).trim().toLowerCase().replace(',', '.');
     let aStr = String(actual).trim().toLowerCase().replace(',', '.');
@@ -284,7 +345,10 @@ function showFeedback(isCorrect, correctAnswer) {
     text.innerText = isCorrect ? 'Правильно!' : 'Неправильно';
     
     let displayCorrect = Array.isArray(correctAnswer) ? correctAnswer.join(', ') : correctAnswer;
-    correctPara.innerText = isCorrect ? '' : `Правильна відповідь: ${displayCorrect}`;
+    if (typeof correctAnswer === 'object' && correctAnswer !== null && !Array.isArray(correctAnswer)) {
+        displayCorrect = Object.entries(correctAnswer).map(([k, v]) => `${k} ➔ ${v}`).join('<br>');
+    }
+    correctPara.innerHTML = isCorrect ? '' : `Правильна відповідь:<br>${displayCorrect}`;
     
     document.getElementById('feedback-next-btn').onclick = () => {
         overlay.classList.add('hidden');
@@ -296,3 +360,36 @@ function nextQuestion() {
     currentQIndex++;
     renderQuestion();
 }
+
+document.getElementById('history-btn').onclick = async () => {
+    const container = document.getElementById('history-container');
+    const list = document.getElementById('history-list');
+    
+    if (!container.classList.contains('hidden')) {
+        container.classList.add('hidden');
+        return;
+    }
+    
+    list.innerHTML = 'Завантаження...';
+    container.classList.remove('hidden');
+    
+    try {
+        const token = getStudentToken();
+        const res = await fetch(`/api/student/history?token=${token}`);
+        const history = await res.json();
+        
+        if (!history || history.length === 0) {
+            list.innerHTML = '<p style="color: #666;">Історія порожня.</p>';
+        } else {
+            list.innerHTML = history.reverse().map(h => `
+                <div style="border-bottom: 1px solid #ccc; padding: 10px 0;">
+                    <div style="font-weight: bold; margin-bottom: 4px;">${h.testTitle}</div>
+                    <div>Оцінка: <span style="color: var(--success); font-weight: bold; font-size: 1.1rem;">${h.score}</span></div>
+                    <div style="color: #666; margin-top: 4px;">${new Date(h.date).toLocaleString('uk-UA')}</div>
+                </div>
+            `).join('');
+        }
+    } catch (e) {
+        list.innerHTML = '<p style="color: var(--error);">Помилка завантаження історії.</p>';
+    }
+};

@@ -18,6 +18,7 @@ let activeTest = null;
 let currentPath = '';
 let editingTest = null;
 let currentTestToStart = null;
+let analyticsChart = null;
 
 // DOM Elements
 let testList, breadcrumbs, listSection, createSection, activeSection, archiveSection, resultsList, builder;
@@ -56,11 +57,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (data.students) {
             updateProgressGrid(data.students);
+            updateAnalyticsChart(data.students, activeTest ? activeTest.questions : []);
         }
     });
 
     socket.on('student_update', (students) => {
         updateProgressGrid(students);
+        updateAnalyticsChart(students, activeTest ? activeTest.questions : []);
     });
     
     // Initial Load
@@ -191,11 +194,25 @@ function attachListeners() {
     });
     btn('cancel-create-btn', () => { createSection.classList.add('hidden'); listSection.classList.remove('hidden'); });
     btn('start-with-settings-btn', () => {
-        const settings = { pin: document.getElementById('test-pin').value || null };
+        const settings = { 
+            pin: document.getElementById('test-pin').value || null,
+            pickCount: parseInt(document.getElementById('test-pick-count').value) || null,
+            timerType: document.getElementById('timer-type').value,
+            timerValue: parseInt(document.getElementById('timer-value').value) || 60,
+            shuffleQuestions: document.getElementById('shuffle-questions').checked,
+            shuffleAnswers: document.getElementById('shuffle-answers').checked,
+            showFeedback: document.getElementById('show-feedback').checked
+        };
+        if (analyticsChart) { analyticsChart.destroy(); analyticsChart = null; }
         socket.emit('start_test_broadcast', { test: currentTestToStart.data, settings, path: currentTestToStart.path });
         showActiveSession(currentTestToStart.data);
     });
-    btn('stop-test-btn', () => { socket.emit('stop_test_broadcast'); activeSection.classList.add('hidden'); listSection.classList.remove('hidden'); });
+    btn('stop-test-btn', () => { 
+        if (analyticsChart) { analyticsChart.destroy(); analyticsChart = null; }
+        socket.emit('stop_test_broadcast'); 
+        activeSection.classList.add('hidden'); 
+        listSection.classList.remove('hidden'); 
+    });
 }
 
 function renderBuilder() {
@@ -222,3 +239,47 @@ async function refreshResults() {
 
 window.deleteResult = async (path) => { await fetch(`/api/results/${path}`, { method: 'DELETE' }); refreshResults(); };
 window.openAiGenerator = () => alert('В розробці');
+
+function updateAnalyticsChart(students, testQuestions) {
+    if (!testQuestions || testQuestions.length === 0) return;
+    const ctx = document.getElementById('analyticsChart');
+    if (!ctx) return;
+
+    const labels = testQuestions.map((_, i) => `П ${i + 1}`);
+    const correctCounts = testQuestions.map(() => 0);
+    const incorrectCounts = testQuestions.map(() => 0);
+
+    students.forEach(s => {
+        testQuestions.forEach((q, i) => {
+            const res = s.results[q.id];
+            if (res) {
+                if (res.isCorrect) correctCounts[i]++;
+                else incorrectCounts[i]++;
+            }
+        });
+    });
+
+    if (analyticsChart) {
+        analyticsChart.data.datasets[0].data = correctCounts;
+        analyticsChart.data.datasets[1].data = incorrectCounts;
+        analyticsChart.update();
+    } else {
+        analyticsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Правильно', data: correctCounts, backgroundColor: '#10b981' },
+                    { label: 'Неправильно', data: incorrectCounts, backgroundColor: '#ef4444' }
+                ]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                scales: { 
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } } 
+                } 
+            }
+        });
+    }
+}

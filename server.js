@@ -129,7 +129,7 @@ io.on('connection', (socket) => {
         
         // Randomization Logic
         if (activeTest && activeTest.settings) {
-          if (activeTest.settings.shuffleQuestions) {
+          if (activeTest.settings.shuffleQuestions || activeTest.settings.pickCount) {
             studentQuestions = shuffleArray(studentQuestions);
           }
           if (activeTest.settings.shuffleAnswers) {
@@ -139,6 +139,9 @@ io.on('connection', (socket) => {
               }
               return q;
             });
+          }
+          if (activeTest.settings.pickCount && activeTest.settings.pickCount < studentQuestions.length) {
+              studentQuestions = studentQuestions.slice(0, activeTest.settings.pickCount);
           }
         }
 
@@ -158,6 +161,7 @@ io.on('connection', (socket) => {
             // New student
             student = { 
               id: socket.id, 
+              token: data.token,
               name: data.name, 
               answers: {}, 
               violations: [], 
@@ -223,6 +227,12 @@ function checkCorrectness(provided, actual) {
         if (!Array.isArray(provided)) return false;
         return actual.length === provided.length && actual.every(v => provided.includes(v));
     }
+    if (typeof actual === 'object' && actual !== null) {
+        if (typeof provided !== 'object' || provided === null) return false;
+        const keys = Object.keys(actual);
+        if (keys.length !== Object.keys(provided).length) return false;
+        return keys.every(k => checkCorrectness(provided[k], actual[k]));
+    }
     const pStr = String(provided).trim().toLowerCase().replace(',', '.');
     const aStr = String(actual).trim().toLowerCase().replace(',', '.');
     return pStr === aStr;
@@ -233,10 +243,16 @@ function checkCorrectness(provided, actual) {
     if (student && data.questionId) {
       if (!student.violations.includes(data.questionId)) {
         student.violations.push(data.questionId);
-        // Force score 0 for this question if already answered or when answered
+        
+        if (student.violations.length >= 3) {
+            student.status = 'disqualified';
+            student.score = 0; // Annul score
+            socket.emit('test_locked', 'Тест заблоковано через часті спроби списування (вихід за межі тесту 3+ рази)!');
+        }
+        
         io.to('teacher_room').emit('student_update', students);
         try {
-            fs.appendFileSync('server.log', `${new Date().toISOString()} - Student ${student.name} warned for cheating on question ${data.questionId}.\n`);
+            fs.appendFileSync('server.log', `${new Date().toISOString()} - Student ${student.name} warned for cheating on question ${data.questionId}. Total violations: ${student.violations.length}\n`);
         } catch (e) {}
       }
     }
@@ -309,10 +325,50 @@ function saveResults() {
   };
   
   fs.writeFileSync(path.join(resultsDir, fileName), JSON.stringify(sessionData, null, 2));
+  
+  // Save to students_db.json
+  try {
+      const dbPath = path.join(__dirname, 'students_db.json');
+      let db = {};
+      if (fs.existsSync(dbPath)) db = JSON.parse(fs.readFileSync(dbPath));
+      
+      students.forEach(s => {
+          if (!s.token) return;
+          if (!db[s.token]) db[s.token] = { name: s.name, history: [] };
+          db[s.token].name = s.name;
+          db[s.token].history.push({
+              testTitle: activeTest.title || testName,
+              score: s.score,
+              date: new Date().toISOString()
+          });
+      });
+      fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
+  } catch (err) {
+      try { fs.appendFileSync('server.log', `${new Date().toISOString()} - Error saving students_db: ${err}\n`); } catch(e){}
+  }
+
   try {
     fs.appendFileSync('server.log', `${new Date().toISOString()} - Results saved for session ${currentSessionId}: ${fileName}\n`);
   } catch (e) {}
 }
+
+// API for Student History
+app.get('/api/student/history', (req, res) => {
+    const token = req.query.token;
+    if (!token) return res.json([]);
+    try {
+        const dbPath = path.join(__dirname, 'students_db.json');
+        if (!fs.existsSync(dbPath)) return res.json([]);
+        const db = JSON.parse(fs.readFileSync(dbPath));
+        if (db[token] && db[token].history) {
+            res.json(db[token].history);
+        } else {
+            res.json([]);
+        }
+    } catch(err) {
+        res.json([]);
+    }
+});
 
 // API for Tests Management
 app.get('/api/tests', (req, res) => {
@@ -384,7 +440,16 @@ app.get('/api/server-info', async (req, res) => {
         } catch (err) {}
     }
     const localUrl = `http://${localIp}:${PORT}/student`;
-    const joinUrl = process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL}/student` : localUrl;
+    let joinUrl = localUrl;
+    
+    if (process.env.RENDER_EXTERNAL_URL) {
+        joinUrl = `${process.env.RENDER_EXTERNAL_URL}/student`;
+    } else if (process.env.SYNC_MASTER_URL) {
+        joinUrl = `${process.env.SYNC_MASTER_URL}/student`;
+    } else if (process.env.PUBLIC_URL) {
+        joinUrl = `${process.env.PUBLIC_URL}/student`;
+    }
+    
     const qrCodeData = await qrcode.toDataURL(joinUrl);
 
     res.json({
