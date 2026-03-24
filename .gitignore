@@ -1,0 +1,7 @@
+node_modules/
+cloudflare_output.txt
+server.log
+crash.log
+cloudflared.exe
+.DS_Store
+.env

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student App - Тестування</title>
+    <link rel="stylesheet" href="/shared.css">
+    <!-- KaTeX for Math Support -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+    <style>
+        .question-card { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); } 20%, 40%, 60%, 80% { transform: translateX(5px); } }
+        .option-label { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 8px; transition: all 0.2s; }
+        .option-label:hover { background: #f0f4ff; border-color: var(--primary); }
+        .option-label input { width: 20px; height: 20px; margin: 0; }
+        .option-label.selected { background: #eef2ff; border-color: var(--primary); border-width: 2px; }
+    </style>
+</head>
+<body>
+    <div class="watermark"></div>
+    <div class="container">
+        <div class="welcome-banner">
+            <h2>Вас вітає Юрій Воротинцев</h2>
+            <p>Тестування почнеться за кілька хвилин. Будь ласка, приготуйтеся.</p>
+        </div>
+
+        <section id="join-section" class="card">
+            <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                <img src="/media/logo.png" class="header-logo" alt="Logo">
+                <h1 style="margin-bottom: 0;">Вхід до тесту</h1>
+            </div>
+            <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Введіть прізвище та ім'я</label>
+            <input type="text" id="student-name" placeholder="Напр. Іванов Іван">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">PIN-код (якщо є)</label>
+            <input type="text" id="student-pin" placeholder="PIN-код" maxlength="6">
+            <button id="join-btn" style="width: 100%; height: 50px; font-size: 1.1rem;">Приєднатися</button>
+        </section>
+
+        <section id="waiting-section" class="card hidden">
+            <h2>Очікування початку тесту...</h2>
+            <p>Ви успішно приєдналися. Вчитель скоро запустить тест.</p>
+        </section>
+
+        <section id="test-section" class="hidden">
+            <div id="test-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div id="timer-display" style="font-size: 1.5rem; font-weight: bold; color: var(--accent);">00:00</div>
+                <div id="progress-text" style="font-size: 0.9rem; color: #666;">Питання 1 з ...</div>
+            </div>
+            <div id="question-container"></div>
+        </section>
+
+        <div id="feedback-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px;">
+            <div id="feedback-icon" style="font-size: 5rem; margin-bottom: 20px;"></div>
+            <h2 id="feedback-text"></h2>
+            <p id="feedback-correct-answer" style="margin-top: 10px; font-size: 1.2rem; color: var(--success); font-weight: bold;"></p>
+            <button id="feedback-next-btn" style="margin-top: 30px; padding: 1rem 2rem;">Наступне питання</button>
+        </div>
+
+        <div id="cheat-warning-banner" class="card hidden" style="background: #fff5f5; border: 2px solid var(--error); position: sticky; top: 10px; z-index: 1000; animation: shake 0.5s;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.5rem;">⚠️</span>
+                <div>
+                    <strong style="color: var(--error);">Вихід за межі тесту!</strong>
+                    <p style="margin: 0; font-size: 0.9rem;">Відповідь на це питання <strong>не буде зарахована</strong> (0 балів).</p>
+                </div>
+            </div>
+        </div>
+
+        <section id="finished-section" class="card hidden">
+            <h2>Тест завершено!</h2>
+            <p>Дякуємо за участь. Ваші результати збережено.</p>
+        </section>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
