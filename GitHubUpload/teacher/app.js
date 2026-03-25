@@ -15,9 +15,13 @@ let socket;
 let tests = [];
 let questions = [];
 let activeTest = null;
+let activeTestPin = null;
 let currentPath = '';
 let editingTest = null;
 let currentTestToStart = null;
+let analyticsChart = null;
+let currentViewedArchive = null;
+let allArchiveFiles = [];
 
 // DOM Elements
 let testList, breadcrumbs, listSection, createSection, activeSection, archiveSection, resultsList, builder;
@@ -47,20 +51,49 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('connection-status').innerText = '❌ Помилка з\'єднання';
     });
 
+    socket.on('sessions_list_update', (sessions) => {
+        const section = document.getElementById('sessions-list-section');
+        const list = document.getElementById('active-sessions-list');
+        if (!section || !list) return;
+        
+        if (sessions.length === 0) {
+            section.classList.add('hidden');
+        } else {
+            section.classList.remove('hidden');
+            list.innerHTML = sessions.map(s => `
+                <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-left: 4px solid var(--success);">
+                    <div>
+                        <strong style="font-size: 1.1rem;">${s.title}</strong>
+                        <div style="font-size: 0.85rem; color: #666; margin-top: 4px;">PIN-код / Назва: <span style="font-weight: bold; color: var(--accent); font-size: 1rem;">${s.pin}</span> | Студентів онлайн: ${s.studentCount}</div>
+                    </div>
+                    <div style="display: flex; gap: 5px;">
+                        <button onclick="viewSession('${s.pin}')" style="background-color: var(--primary); padding: 5px 10px;">📊 Відкрити</button>
+                        <button onclick="stopSession('${s.pin}')" style="background-color: var(--error); padding: 5px 10px;">🛑 Зупинити</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+    });
+
     socket.on('init_state', (data) => {
         refreshTests();
         updateServerInfo();
         if (data.activeTest) {
             activeTest = data.activeTest;
+            activeTestPin = data.pin;
             showActiveSession(data.activeTest);
         }
         if (data.students) {
             updateProgressGrid(data.students);
+            updateAnalyticsChart(data.students, activeTest ? activeTest.questions : []);
         }
     });
 
-    socket.on('student_update', (students) => {
-        updateProgressGrid(students);
+    socket.on('student_update', (data) => {
+        if (activeTestPin === data.pin) {
+            updateProgressGrid(data.students);
+            updateAnalyticsChart(data.students, activeTest ? activeTest.questions : []);
+        }
     });
     
     // Initial Load
@@ -131,10 +164,24 @@ function updateProgressGrid(students) {
 }
 
 async function refreshTests() {
-    const res = await fetch('/api/tests');
-    const data = await res.json();
-    tests = Array.isArray(data) ? data : [];
-    renderTestList();
+    try {
+        const res = await fetch('/api/tests');
+        const data = await res.json();
+        tests = Array.isArray(data.tests) ? data.tests : [];
+        
+        if (data.lastModified) {
+            const date = new Date(data.lastModified);
+            const timeStr = date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const dateStr = date.toLocaleDateString('uk-UA');
+            const lastUpdatedEl = document.getElementById('last-updated');
+            if (lastUpdatedEl) {
+                lastUpdatedEl.innerText = `Остання зміна: ${dateStr} ${timeStr}`;
+            }
+        }
+        renderTestList();
+    } catch (e) {
+        console.error('Failed to refresh tests:', e);
+    }
 }
 
 window.navigateTo = (path) => { currentPath = path; renderTestList(); };
@@ -159,6 +206,48 @@ function renderTestList() {
         </div>
     `).join('');
 }
+
+window.goHome = () => {
+    navigateTo('');
+    document.getElementById('test-settings-section').classList.add('hidden');
+    createSection.classList.add('hidden');
+    activeSection.classList.add('hidden');
+    archiveSection.classList.add('hidden');
+    document.getElementById('sessions-list-section').classList.remove('hidden');
+    listSection.classList.remove('hidden');
+    
+    currentViewedArchive = null;
+    document.getElementById('stop-test-btn').classList.remove('hidden');
+    const closeBtn = document.getElementById('close-results-btn');
+    if (closeBtn) closeBtn.classList.add('hidden');
+};
+
+window.viewSession = (pin) => {
+    socket.emit('teacher_view_session', pin);
+};
+
+window.stopSession = (pin) => {
+    console.log(`[UI] Attempting to stop session: ${pin}`);
+    if (!socket || !socket.connected) {
+        alert('❌ Помилка: немає зв\'язку з сервером. Неможливо зупинити тест зараз.');
+        return;
+    }
+    if (confirm('Зупинити тест? Результати будуть збережені автоматично.')) {
+        console.log(`[UI] Sending stop_test_broadcast for PIN: ${pin}`);
+        socket.emit('stop_test_broadcast', pin);
+        if (activeTestPin === pin) {
+            if (analyticsChart) { analyticsChart.destroy(); analyticsChart = null; }
+            activeSection.classList.add('hidden');
+            listSection.classList.remove('hidden');
+            activeTestPin = null;
+            activeTest = null;
+        } else {
+            console.log(`[UI] Test stopped from sessions list. Waiting for server broadcast to refresh UI.`);
+        }
+    } else {
+        console.log(`[UI] Stop cancelled by user.`);
+    }
+};
 
 window.startTest = (path) => {
     currentTestToStart = tests.find(t => t.path === path);
@@ -190,12 +279,100 @@ function attachListeners() {
         createSection.classList.add('hidden'); listSection.classList.remove('hidden'); refreshTests();
     });
     btn('cancel-create-btn', () => { createSection.classList.add('hidden'); listSection.classList.remove('hidden'); });
+    
+    // Test execution settings
     btn('start-with-settings-btn', () => {
-        const settings = { pin: document.getElementById('test-pin').value || null };
+        const settings = { 
+            pin: document.getElementById('test-pin').value || null,
+            pickCount: parseInt(document.getElementById('test-pick-count').value) || null,
+            timerType: document.getElementById('timer-type').value,
+            timerValue: parseInt(document.getElementById('timer-value').value) || 60,
+            shuffleQuestions: document.getElementById('shuffle-questions').checked,
+            shuffleAnswers: document.getElementById('shuffle-answers').checked,
+            showFeedback: document.getElementById('show-feedback').checked,
+            showCorrect: document.getElementById('show-correct').checked,
+            showScore: document.getElementById('show-score').checked
+        };
+        // Just emit and hide settings, the sessions_list_update will show the new session
         socket.emit('start_test_broadcast', { test: currentTestToStart.data, settings, path: currentTestToStart.path });
-        showActiveSession(currentTestToStart.data);
+        
+        document.getElementById('test-settings-section').classList.add('hidden');
+        listSection.classList.remove('hidden');
     });
-    btn('stop-test-btn', () => { socket.emit('stop_test_broadcast'); activeSection.classList.add('hidden'); listSection.classList.remove('hidden'); });
+    btn('cancel-settings-btn', () => {
+        document.getElementById('test-settings-section').classList.add('hidden');
+        listSection.classList.remove('hidden');
+    });
+    btn('export-excel-btn', () => {
+        if (activeTestPin) {
+            window.location.href = `/api/export-results?pin=${activeTestPin}`;
+        } else if (currentViewedArchive) {
+            window.location.href = `/api/export-results?filename=${currentViewedArchive}`;
+        }
+    });
+
+    btn('stop-test-btn', () => { 
+        if (activeTestPin) {
+            window.stopSession(activeTestPin);
+        } else {
+            activeSection.classList.add('hidden'); 
+            listSection.classList.remove('hidden');
+        }
+    });
+
+    btn('refresh-tests-btn', () => {
+        refreshTests();
+    });
+
+    // Archive
+    btn('show-results-btn', () => {
+        listSection.classList.add('hidden');
+        archiveSection.classList.remove('hidden');
+        refreshResults();
+    });
+    btn('back-to-tests-btn', () => {
+        archiveSection.classList.add('hidden');
+        listSection.classList.remove('hidden');
+    });
+    btn('close-results-btn', () => {
+        if (window.closeArchivedResult) window.closeArchivedResult();
+    });
+
+    const searchInput = document.getElementById('archive-search');
+    if (searchInput) {
+        searchInput.oninput = () => renderResults();
+    }
+    
+    // Folder Controls
+    const folderGroup = document.getElementById('folder-input-group');
+    const folderBtn = document.getElementById('show-folder-input-btn');
+    
+    if (folderBtn) {
+        btn('show-folder-input-btn', () => {
+            folderGroup.classList.remove('hidden');
+            folderBtn.classList.add('hidden');
+            document.getElementById('new-folder-name').focus();
+        });
+        btn('cancel-folder-btn', () => {
+            folderGroup.classList.add('hidden');
+            folderBtn.classList.remove('hidden');
+            document.getElementById('new-folder-name').value = '';
+        });
+        btn('confirm-folder-btn', async () => {
+            const name = document.getElementById('new-folder-name').value.trim();
+            if (!name) return;
+            const targetPath = currentPath ? `${currentPath}/${name}` : name;
+            await fetch('/api/tests/folder', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ folder: targetPath })
+            });
+            folderGroup.classList.add('hidden');
+            folderBtn.classList.remove('hidden');
+            document.getElementById('new-folder-name').value = '';
+            refreshTests();
+        });
+    }
 }
 
 function renderBuilder() {
@@ -215,10 +392,151 @@ function showActiveSession(data) {
 }
 
 async function refreshResults() {
-    const res = await fetch('/api/results');
-    const files = await res.json();
-    resultsList.innerHTML = files.map(f => `<div>${f.name} <button onclick="deleteResult('${f.path}')">X</button></div>`).join('');
+    try {
+        const res = await fetch('/api/results');
+        allArchiveFiles = await res.json();
+        renderResults();
+    } catch (e) {
+        console.error('Failed to refresh results:', e);
+    }
 }
 
-window.deleteResult = async (path) => { await fetch(`/api/results/${path}`, { method: 'DELETE' }); refreshResults(); };
+function renderResults() {
+    const list = document.getElementById('results-list');
+    const search = document.getElementById('archive-search').value.toLowerCase();
+    
+    const filtered = allArchiveFiles.filter(f => f.name.toLowerCase().includes(search));
+    
+    list.innerHTML = filtered.map(f => {
+        // Try to parse info from filename (Title_PIN_Date.json)
+        const parts = f.name.replace('.json', '').split('_');
+        let displayTitle = f.name;
+        let dateInfo = '';
+        let pinInfo = '';
+        
+        if (parts.length >= 3) {
+            const dateStr = parts.pop();
+            const pinStr = parts.pop();
+            displayTitle = parts.join(' ').replace(/_/g, ' ');
+            dateInfo = `<span style="color: #666; font-size: 0.85rem;">📅 ${dateStr.replace(/-/g, '.')}</span>`;
+            pinInfo = `<span style="background: #eef2ff; color: var(--primary); padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;">PIN: ${pinStr}</span>`;
+        }
+
+        return `
+            <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:15px; margin-bottom: 10px; border-left: 4px solid var(--primary);">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: bold; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">📄 ${displayTitle}</div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        ${pinInfo}
+                        ${dateInfo}
+                    </div>
+                </div>
+                <div style="display:flex; gap:5px; flex-shrink: 0; margin-left: 10px;">
+                    <button onclick="viewArchivedResult('${f.name}')" style="background:var(--primary); padding: 8px 15px;">👁️ Відкрити</button>
+                    <button onclick="deleteResult('${f.name}')" style="background:var(--error); padding: 8px 15px;">X</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    if (filtered.length === 0) {
+        list.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">Результатів не знайдено 🔍</p>';
+    }
+}
+
+window.viewArchivedResult = async (filename) => {
+    try {
+        const res = await fetch(`/api/results-data/${filename}`);
+        if (!res.ok) throw new Error('Cannot load JSON');
+        const sessionData = await res.json();
+        
+        document.getElementById('results-archive-section').classList.add('hidden');
+        document.getElementById('stop-test-btn').classList.add('hidden');
+        
+        const closeBtn = document.getElementById('close-results-btn');
+        if (closeBtn) closeBtn.classList.remove('hidden');
+        
+        document.getElementById('active-test-name').innerText = (sessionData.test && sessionData.test.title) || filename;
+        
+        activeTest = sessionData.test || { questions: [] };
+        activeTestPin = null; 
+        currentViewedArchive = filename;
+        
+        activeSection.classList.remove('hidden');
+        
+        if (sessionData.students) {
+            updateProgressGrid(sessionData.students);
+            updateAnalyticsChart(sessionData.students, activeTest.questions);
+        } else {
+            updateProgressGrid([]);
+            updateAnalyticsChart([], activeTest.questions);
+        }
+    } catch(e) {
+        alert('Помилка завантаження файлу: ' + e.message);
+    }
+};
+
+window.closeArchivedResult = () => {
+    activeSection.classList.add('hidden');
+    document.getElementById('results-archive-section').classList.remove('hidden');
+    document.getElementById('stop-test-btn').classList.remove('hidden');
+    
+    const closeBtn = document.getElementById('close-results-btn');
+    if (closeBtn) closeBtn.classList.add('hidden');
+    
+    activeTest = null;
+    activeTestPin = null;
+    currentViewedArchive = null;
+};
+
+window.deleteResult = async (path) => {
+    if (confirm('Видалити цей результат?')) {
+        await fetch(`/api/results/${path}`, { method: 'DELETE' }); 
+        refreshResults(); 
+    }
+};
 window.openAiGenerator = () => alert('В розробці');
+
+function updateAnalyticsChart(students, testQuestions) {
+    if (!testQuestions || testQuestions.length === 0) return;
+    const ctx = document.getElementById('analyticsChart');
+    if (!ctx) return;
+
+    const labels = testQuestions.map((_, i) => `П ${i + 1}`);
+    const correctCounts = testQuestions.map(() => 0);
+    const incorrectCounts = testQuestions.map(() => 0);
+
+    students.forEach(s => {
+        testQuestions.forEach((q, i) => {
+            const res = s.results[q.id];
+            if (res) {
+                if (res.isCorrect) correctCounts[i]++;
+                else incorrectCounts[i]++;
+            }
+        });
+    });
+
+    if (analyticsChart) {
+        analyticsChart.data.datasets[0].data = correctCounts;
+        analyticsChart.data.datasets[1].data = incorrectCounts;
+        analyticsChart.update();
+    } else {
+        analyticsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Правильно', data: correctCounts, backgroundColor: '#10b981' },
+                    { label: 'Неправильно', data: incorrectCounts, backgroundColor: '#ef4444' }
+                ]
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                scales: { 
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } } 
+                } 
+            }
+        });
+    }
+}

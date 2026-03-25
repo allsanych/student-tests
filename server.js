@@ -27,17 +27,23 @@ process.on('unhandledRejection', (reason, promise) => {
 // Helper to get all files recursively
 function getFiles(dir, baseDir = dir) {
   let results = [];
+  let lastMod = 0;
   const list = fs.readdirSync(dir, { withFileTypes: true });
   for (const dirent of list) {
     const filePath = path.join(dir, dirent.name);
+    const stats = fs.statSync(filePath);
+    if (stats.mtimeMs > lastMod) lastMod = stats.mtimeMs;
+    
     const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
     if (dirent.isDirectory()) {
       results.push({ path: relativePath, name: dirent.name, type: 'directory' });
-      results = results.concat(getFiles(filePath, baseDir));
+      const sub = getFiles(filePath, baseDir);
+      results = results.concat(sub.results);
+      if (sub.lastModified > lastMod) lastMod = sub.lastModified;
     } else if (dirent.name.endsWith('.json')) {
+      // ... same logic for parsing ...
       try {
         let testData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        // Normalize if it's just an array of questions
         if (Array.isArray(testData)) {
           testData = { title: dirent.name.replace('.json', ''), questions: testData };
         }
@@ -47,14 +53,10 @@ function getFiles(dir, baseDir = dir) {
           type: 'file',
           data: testData
         });
-      } catch (e) {
-        try {
-            fs.appendFileSync('server.log', `${new Date().toISOString()} - Error parsing JSON in ${filePath}: ${e}\n`);
-        } catch (err) {}
-      }
+      } catch (e) {}
     }
   }
-  return results;
+  return { results, lastModified: lastMod };
 }
 
 function shuffleArray(array) {
@@ -257,7 +259,7 @@ io.on('connection', (socket) => {
         
         socket.join(`session_${pin}`);
         io.to('teacher_room').emit('student_update', { pin: pin, students: session.students });
-        socket.emit('start_test', { ...activeTest, questions: student.questions });
+        socket.emit('start_test', { ...activeTest, questions: student.questions, settings: session.settings });
 
         fs.appendFileSync('server.log', `${new Date().toISOString()} - Student ${data.name} joined session ${pin}\n`);
 
@@ -372,7 +374,8 @@ function checkCorrectness(provided, actual) {
     
     const sessionId = Date.now().toString(36).toUpperCase();
     const testName = data.test.title ? data.test.title.replace(/[^a-z0-9а-яіїєґ]/gi, '_') : 'Unnamed';
-    const fileName = `${testName}_${pin}.json`;
+    const dateStr = new Date().toLocaleDateString('uk-UA').replace(/\./g, '-');
+    const fileName = `${testName}_${pin}_${dateStr}.json`;
 
     let existingStudents = [];
     const resultsDir = path.join(__dirname, 'results');
@@ -525,9 +528,9 @@ app.get('/api/tests', (req, res) => {
   try {
     const testsDir = path.join(__dirname, 'tests');
     if (!fs.existsSync(testsDir)) fs.mkdirSync(testsDir);
-    const tests = getFiles(testsDir);
-    console.log(`[API] Serving ${tests.length} tests/folders from ${testsDir}`);
-    res.json(tests);
+    const { results, lastModified } = getFiles(testsDir);
+    console.log(`[API] Serving ${results.length} tests/folders from ${testsDir}`);
+    res.json({ tests: results, lastModified });
   } catch (err) {
     try {
         fs.appendFileSync('server.log', `${new Date().toISOString()} - API Error /api/tests: ${err}\n`);
@@ -674,20 +677,24 @@ app.get('/api/export-results', (req, res) => {
     const grade12 = Math.round((s.score / totalPossibleScore) * 12);
     
     // Time spent
+    const startTime = s.startTime || sessionData.timestamp || Date.now();
     const endTime = s.endTime || Date.now();
-    const durationMs = endTime - (s.startTime || Date.now());
+    const durationMs = endTime - startTime;
     const minutes = Math.floor(durationMs / 60000);
     const seconds = Math.floor((durationMs % 60000) / 1000);
     const timeSpent = `${minutes}хв ${seconds}с`;
     
-    const dateStr = new Date().toLocaleDateString('uk-UA');
+    const dateStr = new Date(startTime).toLocaleDateString('uk-UA');
     const statusStr = s.endTime ? 'Пройдено' : 'Незавершено';
 
     csv += `${index + 1};${rank};"${s.name}";${correctCount};${incorrectCount};${grade12};${skippedCount};${statusStr};${timeSpent};${s.violations.length};${dateStr}\n`;
   });
 
+  const testTitle = activeTest ? activeTest.title.replace(/[^a-z0-9а-яіїєґ]/gi, '_') : 'test';
+  const reportDate = sessionData.timestamp ? new Date(sessionData.timestamp).toLocaleDateString('uk-UA').replace(/\./g, '-') : new Date().toLocaleDateString('uk-UA').replace(/\./g, '-');
+
   res.setHeader('Content-Type', 'text/csv');
-  res.setHeader('Content-Disposition', `attachment; filename=results_${exportPin}.csv`);
+  res.setHeader('Content-Disposition', `attachment; filename=results_${testTitle}_PIN_${exportPin}_${reportDate}.csv`);
   res.send('\uFEFF' + csv);
 });
 

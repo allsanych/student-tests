@@ -21,6 +21,7 @@ let editingTest = null;
 let currentTestToStart = null;
 let analyticsChart = null;
 let currentViewedArchive = null;
+let allArchiveFiles = [];
 
 // DOM Elements
 let testList, breadcrumbs, listSection, createSection, activeSection, archiveSection, resultsList, builder;
@@ -163,10 +164,24 @@ function updateProgressGrid(students) {
 }
 
 async function refreshTests() {
-    const res = await fetch('/api/tests');
-    const data = await res.json();
-    tests = Array.isArray(data) ? data : [];
-    renderTestList();
+    try {
+        const res = await fetch('/api/tests');
+        const data = await res.json();
+        tests = Array.isArray(data.tests) ? data.tests : [];
+        
+        if (data.lastModified) {
+            const date = new Date(data.lastModified);
+            const timeStr = date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const dateStr = date.toLocaleDateString('uk-UA');
+            const lastUpdatedEl = document.getElementById('last-updated');
+            if (lastUpdatedEl) {
+                lastUpdatedEl.innerText = `Остання зміна: ${dateStr} ${timeStr}`;
+            }
+        }
+        renderTestList();
+    } catch (e) {
+        console.error('Failed to refresh tests:', e);
+    }
 }
 
 window.navigateTo = (path) => { currentPath = path; renderTestList(); };
@@ -322,6 +337,11 @@ function attachListeners() {
     btn('close-results-btn', () => {
         if (window.closeArchivedResult) window.closeArchivedResult();
     });
+
+    const searchInput = document.getElementById('archive-search');
+    if (searchInput) {
+        searchInput.oninput = () => renderResults();
+    }
     
     // Folder Controls
     const folderGroup = document.getElementById('folder-input-group');
@@ -372,17 +392,56 @@ function showActiveSession(data) {
 }
 
 async function refreshResults() {
-    const res = await fetch('/api/results');
-    const files = await res.json();
-    resultsList.innerHTML = files.map(f => `
-        <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:15px; margin-bottom: 10px; border-left: 4px solid var(--primary);">
-            <strong style="word-break: break-all;">📄 ${f.name}</strong>
-            <div style="display:flex; gap:5px; flex-shrink: 0; margin-left: 10px;">
-                <button onclick="viewArchivedResult('${f.name}')" style="background:var(--primary); padding: 8px 15px;">👁️ Відкрити</button>
-                <button onclick="deleteResult('${f.name}')" style="background:var(--error); padding: 8px 15px;">X</button>
+    try {
+        const res = await fetch('/api/results');
+        allArchiveFiles = await res.json();
+        renderResults();
+    } catch (e) {
+        console.error('Failed to refresh results:', e);
+    }
+}
+
+function renderResults() {
+    const list = document.getElementById('results-list');
+    const search = document.getElementById('archive-search').value.toLowerCase();
+    
+    const filtered = allArchiveFiles.filter(f => f.name.toLowerCase().includes(search));
+    
+    list.innerHTML = filtered.map(f => {
+        // Try to parse info from filename (Title_PIN_Date.json)
+        const parts = f.name.replace('.json', '').split('_');
+        let displayTitle = f.name;
+        let dateInfo = '';
+        let pinInfo = '';
+        
+        if (parts.length >= 3) {
+            const dateStr = parts.pop();
+            const pinStr = parts.pop();
+            displayTitle = parts.join(' ').replace(/_/g, ' ');
+            dateInfo = `<span style="color: #666; font-size: 0.85rem;">📅 ${dateStr.replace(/-/g, '.')}</span>`;
+            pinInfo = `<span style="background: #eef2ff; color: var(--primary); padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;">PIN: ${pinStr}</span>`;
+        }
+
+        return `
+            <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:15px; margin-bottom: 10px; border-left: 4px solid var(--primary);">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: bold; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">📄 ${displayTitle}</div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        ${pinInfo}
+                        ${dateInfo}
+                    </div>
+                </div>
+                <div style="display:flex; gap:5px; flex-shrink: 0; margin-left: 10px;">
+                    <button onclick="viewArchivedResult('${f.name}')" style="background:var(--primary); padding: 8px 15px;">👁️ Відкрити</button>
+                    <button onclick="deleteResult('${f.name}')" style="background:var(--error); padding: 8px 15px;">X</button>
+                </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
+    
+    if (filtered.length === 0) {
+        list.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">Результатів не знайдено 🔍</p>';
+    }
 }
 
 window.viewArchivedResult = async (filename) => {

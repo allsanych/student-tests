@@ -208,7 +208,18 @@ function renderQuestion() {
         if (!q) {
             clearInterval(timerInterval);
             socket.emit('finish_test');
-            testSection.innerHTML = '<div class="card"><h2>Всі питання пройдено! Очікуйте завершення...</h2></div>';
+            
+            // Switch to finished section immediately
+            testSection.classList.add('hidden');
+            finishedSection.classList.remove('hidden');
+            
+            // Show a pending message until results are received
+            const statusMsg = document.createElement('p');
+            statusMsg.id = 'result-pending-msg';
+            statusMsg.innerText = 'Всі питання пройдено! Очікуйте нарахування балів...';
+            statusMsg.style.color = 'var(--primary)';
+            statusMsg.style.fontWeight = 'bold';
+            finishedSection.querySelector('h2').after(statusMsg);
             return;
         }
 
@@ -354,16 +365,31 @@ window.submitAnswer = (ans) => {
 };
 
 socket.on('test_results', (data) => {
+    // Remove pending message if exists
+    const pending = document.getElementById('result-pending-msg');
+    if (pending) pending.remove();
+
+    const existingScore = document.getElementById('final-score-display');
+    if (existingScore) existingScore.remove();
+
     const scoreDisplay = document.createElement('div');
+    scoreDisplay.id = 'final-score-display';
     scoreDisplay.style.fontSize = '1.8rem';
     scoreDisplay.style.fontWeight = 'bold';
     scoreDisplay.style.color = 'var(--primary)';
     scoreDisplay.style.margin = '20px 0';
     scoreDisplay.innerText = `Ваша оцінка: ${data.score} балів`;
     
-    if (currentTest && currentTest.settings && currentTest.settings.showScore) {
+    // Check settings sent from server
+    const showScore = currentTest && currentTest.settings && currentTest.settings.showScore !== false;
+    
+    if (showScore) {
         finishedSection.querySelector('h2').after(scoreDisplay);
     }
+    
+    // Ensure we are in finished section
+    testSection.classList.add('hidden');
+    finishedSection.classList.remove('hidden');
 });
 
 function checkCorrectness(provided, actual) {
