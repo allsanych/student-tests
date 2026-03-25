@@ -300,6 +300,12 @@ io.on('connection', (socket) => {
       });
       student.score = Math.round(totalScore * 100) / 100;
       
+      // Live 12-point grade calculation
+      if (session && session.test) {
+          const totalPossible = session.test.questions.reduce((sum, q) => sum + (q.score || 1), 0) || 1;
+          student.grade12 = Math.round((student.score / totalPossible) * 12);
+      }
+      
       if (Object.keys(student.results).length === student.questions.length) {
           student.endTime = Date.now();
           autoSaveSession(session.pin);
@@ -426,8 +432,17 @@ function checkCorrectness(provided, actual) {
     const { session, student } = findStudentSession(socket.id);
     if (student && session) {
         student.endTime = Date.now();
+        
+        // Calculate 12-point grade
+        const totalPossible = session.test.questions.reduce((sum, q) => sum + (q.score || 1), 0) || 1;
+        student.grade12 = Math.round((student.score / totalPossible) * 12);
+        
         autoSaveSession(session.pin);
-        socket.emit('test_results', { score: student.score });
+        socket.emit('test_results', { 
+            score: student.score, 
+            grade12: student.grade12,
+            maxPossible: totalPossible
+        });
         io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
     }
   });

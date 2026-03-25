@@ -158,7 +158,10 @@ function updateProgressGrid(students) {
         }
         return `<div class="card" style="display:flex;justify-content:space-between;border-left:5px solid ${statusColor};">
             <div><strong>${s.name}</strong><div style="display:flex;gap:3px;margin-top:5px;">${progressHtml}</div></div>
-            <div style="text-align:right;"><strong>${s.score}</strong></div>
+            <div style="text-align:right;">
+                <div style="font-size:1.2rem;font-weight:bold;color:var(--primary);">${s.grade12 || 0}</div>
+                <div style="font-size:0.8rem;color:#666;">${s.score} / ${testQCount}</div>
+            </div>
         </div>`;
     }).join('');
 }
