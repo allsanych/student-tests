@@ -740,8 +740,9 @@ app.get('/api/export-results', (req, res) => {
     const rawDate = sessionData.timestamp ? new Date(sessionData.timestamp) : new Date();
     const reportDate = isNaN(rawDate) ? 'date-unknown' : rawDate.toLocaleDateString('uk-UA').replace(/\./g, '-');
 
+    const fileName = `results_${testTitle}_PIN_${exportPin}_${reportDate}.csv`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=results_${testTitle}_PIN_${exportPin}_${reportDate}.csv`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
     res.send('\uFEFF' + csv);
   } catch (err) {
     console.error('[EXPORT ERROR]', err);
