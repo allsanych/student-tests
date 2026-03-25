@@ -10,12 +10,18 @@ const { spawn } = require('child_process');
 
 // Global Error Handling
 process.on('uncaughtException', (err) => {
-  fs.appendFileSync('crash.log', `${new Date().toISOString()} - Uncaught Exception: ${err.stack}\n`);
+  console.error('[CRITICAL] Uncaught Exception:', err);
+  try {
+    fs.appendFileSync('crash.log', `${new Date().toISOString()} - Uncaught Exception: ${err.stack}\n`);
+  } catch (e) {}
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  fs.appendFileSync('crash.log', `${new Date().toISOString()} - Unhandled Rejection: ${reason}\n`);
+  console.error('[CRITICAL] Unhandled Rejection:', reason);
+  try {
+    fs.appendFileSync('crash.log', `${new Date().toISOString()} - Unhandled Rejection: ${reason}\n`);
+  } catch (e) {}
 });
 
 // Helper to get all files recursively
@@ -65,6 +71,15 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
+
+// Ensure necessary directories exist
+['results', 'media', 'tests'].forEach(dir => {
+    const dirPath = path.join(__dirname, dir);
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+        console.log(`[INIT] Created directory: ${dir}`);
+    }
+});
 
 // Basic Authentication Middleware for Teacher Dashboard
 const teacherAuth = (req, res, next) => {
