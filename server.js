@@ -182,6 +182,37 @@ io.on('connection', (socket) => {
       }
   });
 
+  socket.on('teacher_restore_session', (filename) => {
+      try {
+          const filePath = path.join(__dirname, 'results', filename);
+          if (!fs.existsSync(filePath)) return;
+          
+          const sessionData = JSON.parse(fs.readFileSync(filePath));
+          const pin = sessionData.pin;
+          
+          if (activeSessions[pin]) {
+              console.log(`[SESSION] Restore ignored: PIN ${pin} is already active.`);
+              return;
+          }
+          
+          activeSessions[pin] = {
+              id: sessionData.sessionId || Date.now().toString(36),
+              pin: pin,
+              test: sessionData.test,
+              path: sessionData.path || '',
+              settings: sessionData.settings || { showFeedback: true, showCorrect: true, showScore: true },
+              students: sessionData.students || [],
+              fileName: filename
+          };
+          
+          console.log(`[SESSION] Restored session ${pin} from ${filename}`);
+          persistActiveSessions();
+          broadcastSessions();
+      } catch (err) {
+          console.error('[SESSION] Restore error:', err);
+      }
+  });
+
   // Helper for socket events
   function findStudentSession(socketId) {
       for (const pin in activeSessions) {

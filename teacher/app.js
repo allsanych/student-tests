@@ -617,6 +617,7 @@ function renderResults() {
                     </div>
                 </div>
                 <div style="display:flex; gap:5px; flex-shrink: 0; margin-left: 10px;">
+                    <button onclick="restoreSession('${f.name}')" style="background:var(--success); padding: 8px 10px;" title="Відновити сесію (зробити активною)">🔄</button>
                     <button onclick="viewArchivedResult('${f.name}')" style="background:var(--primary); padding: 8px 15px;">👁️ Відкрити</button>
                     <button onclick="deleteResult('${f.name}')" style="background:var(--error); padding: 8px 15px;">X</button>
                 </div>
@@ -646,6 +647,13 @@ window.viewArchivedResult = async (filename) => {
     } catch(e) {
         alert('Помилка завантаження файлу: ' + e.message);
     }
+};
+
+window.restoreSession = async (filename) => {
+    if (!confirm('Ви дійсно хочете відновити цю сесію? Це зробить ПІН-код знову активним для входу студентів.')) return;
+    socket.emit('teacher_restore_session', filename);
+    alert('Запит на відновлення надіслано. Перевірте список активних тестів.');
+    goHome();
 };
 
 window.closeArchivedResult = () => {
