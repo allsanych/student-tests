@@ -353,6 +353,19 @@ window.submitAnswer = (ans) => {
     }
 };
 
+socket.on('test_results', (data) => {
+    const scoreDisplay = document.createElement('div');
+    scoreDisplay.style.fontSize = '1.8rem';
+    scoreDisplay.style.fontWeight = 'bold';
+    scoreDisplay.style.color = 'var(--primary)';
+    scoreDisplay.style.margin = '20px 0';
+    scoreDisplay.innerText = `Ваша оцінка: ${data.score} балів`;
+    
+    if (currentTest && currentTest.settings && currentTest.settings.showScore) {
+        finishedSection.querySelector('h2').after(scoreDisplay);
+    }
+});
+
 function checkCorrectness(provided, actual) {
     if (Array.isArray(actual)) {
         if (!Array.isArray(provided)) return false;
@@ -389,7 +402,9 @@ function showFeedback(isCorrect, correctAnswer) {
     if (typeof correctAnswer === 'object' && correctAnswer !== null && !Array.isArray(correctAnswer)) {
         displayCorrect = Object.entries(correctAnswer).map(([k, v]) => `${k} ➔ ${v}`).join('<br>');
     }
-    correctPara.innerHTML = isCorrect ? '' : `Правильна відповідь:<br>${displayCorrect}`;
+    
+    const showCorrect = !currentTest || !currentTest.settings || currentTest.settings.showCorrect !== false;
+    correctPara.innerHTML = (isCorrect || !showCorrect) ? '' : `Правильна відповідь:<br>${displayCorrect}`;
     
     document.getElementById('feedback-next-btn').onclick = () => {
         overlay.classList.add('hidden');

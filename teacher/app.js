@@ -274,7 +274,9 @@ function attachListeners() {
             timerValue: parseInt(document.getElementById('timer-value').value) || 60,
             shuffleQuestions: document.getElementById('shuffle-questions').checked,
             shuffleAnswers: document.getElementById('shuffle-answers').checked,
-            showFeedback: document.getElementById('show-feedback').checked
+            showFeedback: document.getElementById('show-feedback').checked,
+            showCorrect: document.getElementById('show-correct').checked,
+            showScore: document.getElementById('show-score').checked
         };
         // Just emit and hide settings, the sessions_list_update will show the new session
         socket.emit('start_test_broadcast', { test: currentTestToStart.data, settings, path: currentTestToStart.path });

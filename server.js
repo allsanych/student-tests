@@ -409,6 +409,7 @@ function checkCorrectness(provided, actual) {
     if (student && session) {
         student.endTime = Date.now();
         autoSaveSession(session.pin);
+        socket.emit('test_results', { score: student.score });
         io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
     }
   });
