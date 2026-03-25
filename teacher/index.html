@@ -173,7 +173,10 @@
         <div class="modal-content">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h2 id="archive-test-name">Архів результатів</h2>
-                <button onclick="document.getElementById('archive-modal').style.display='none'" style="background-color: var(--error);">Закрити</button>
+                <div style="display: flex; gap: 10px;">
+                    <button id="archive-export-btn" style="background-color: var(--accent);">Експорт (Excel/CSV)</button>
+                    <button onclick="document.getElementById('archive-modal').style.display='none'" style="background-color: var(--error);">Закрити</button>
+                </div>
             </div>
             <div id="archive-progress-grid" style="display: grid; gap: 15px; grid-template-columns: 1fr;"></div>
         </div>

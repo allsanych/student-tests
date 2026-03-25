@@ -172,7 +172,7 @@ function updateProgressGrid(students, containerId = 'students-progress-grid') {
         if (questionsToUse) {
             questionsToUse.forEach(q => {
                 const res = s.results[q.id];
-                let color = res ? (res.isCorrect ? 'var(--success)' : 'var(--error)') : '#eee';
+                let color = res ? (res.isCorrect ? 'var(--success)' : 'var(--error)') : 'var(--skipped)';
                 progressHtml += `<div title="${q.text.substring(0, 50)}..." style="width:15px;height:15px;background:${color};border-radius:3px;cursor:help;"></div>`;
             });
         }
@@ -335,6 +335,11 @@ function attachListeners() {
         if (activeTestPin) {
             window.location.href = `/api/export-results?pin=${activeTestPin}`;
         } else if (currentViewedArchive) {
+            window.location.href = `/api/export-results?filename=${currentViewedArchive}`;
+        }
+    });
+    btn('archive-export-btn', () => {
+        if (currentViewedArchive) {
             window.location.href = `/api/export-results?filename=${currentViewedArchive}`;
         }
     });
