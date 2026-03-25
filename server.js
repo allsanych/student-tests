@@ -105,6 +105,7 @@ app.use('/student', express.static(path.join(__dirname, 'student')));
 app.use('/media', express.static(path.join(__dirname, 'media')));
 
 // Storage for active session data
+const activeSessions = {}; // Maps PIN -> { id, pin, test, settings, path, students, fileName }
 const saveTimeouts = {}; // Maps PIN -> timeoutId for debounced saving
 
 const SESSIONS_FILE = path.join(__dirname, 'active_sessions.json');
