@@ -102,8 +102,8 @@ module.exports = function setupSync(serverHostIo) {
         client.on('file_delete', applyRemoteDelete);
         client.on('disconnect', () => console.log('[SYNC] Disconnected from Master'));
 
-        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'teacher', 'student', 'tests'], { 
-            ignored: [/node_modules/, /\.git/, /results/],
+        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'teacher', 'student', 'tests', 'results'], { 
+            ignored: [/node_modules/, /\.git/],
             ignoreInitial: true, 
             persistent: true, 
             usePolling: true,
@@ -127,8 +127,8 @@ module.exports = function setupSync(serverHostIo) {
             syncNamespace.emit(event, payload);
         }
  
-        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'teacher', 'student', 'tests'], { 
-            ignored: [/node_modules/, /\.git/, /results/],
+        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'teacher', 'student', 'tests', 'results'], { 
+            ignored: [/node_modules/, /\.git/],
             ignoreInitial: true, 
             persistent: true,
             awaitWriteFinish: { stabilityThreshold: 500 } 

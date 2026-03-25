@@ -15,6 +15,7 @@ let timerInterval = null;
 let timeLeft = 0;
 let perQuestionTimer = false;
 let isBreakActive = false;
+let localAnswers = {};
 
 function getStudentToken() {
     let token = localStorage.getItem('studentToken');
@@ -71,8 +72,32 @@ socket.on('join_error', (msg) => {
 });
 
 socket.on('start_test', (test) => {
+    const savedPin = localStorage.getItem('studentPin');
+    const progressKey = `progress_${test.title}_${savedPin}`;
+    const savedProgress = localStorage.getItem(progressKey);
+    
     currentTest = test;
     currentQIndex = 0;
+    localAnswers = {};
+
+    if (savedProgress) {
+        try {
+            const data = JSON.parse(savedProgress);
+            if (confirm('Виявлено незавершений тест. Продовжити з місця зупинки?')) {
+                currentQIndex = data.qIndex || 0;
+                localAnswers = data.answers || {};
+                // Re-sync answers to server
+                Object.keys(localAnswers).forEach(qId => {
+                    socket.emit('submit_answer', { questionId: qId, answer: localAnswers[qId] });
+                });
+            } else {
+                localStorage.removeItem(progressKey);
+            }
+        } catch (e) {
+            console.error('Error loading progress:', e);
+        }
+    }
+
     joinSection.classList.add('hidden');
     waitingSection.classList.add('hidden');
     testSection.classList.remove('hidden');
@@ -82,7 +107,7 @@ socket.on('start_test', (test) => {
     const greetingTitle = document.getElementById('greeting-title');
     const greetingText = document.getElementById('greeting-text');
     if (greetingTitle) greetingTitle.innerText = `📝 ${currentTest.title || 'Тестування'}`;
-    if (greetingText) greetingText.innerText = `PIN-код: ${localStorage.getItem('studentPin') || '---'}`;
+    if (greetingText) greetingText.innerText = `PIN-код: ${savedPin || '---'}`;
     if (welcomeBanner) welcomeBanner.style.padding = '10px 20px';
     
     // Global test timer check
@@ -94,13 +119,30 @@ socket.on('start_test', (test) => {
     renderQuestion();
 });
 
+socket.on('connect', () => {
+    const name = localStorage.getItem('studentName');
+    const pin = localStorage.getItem('studentPin');
+    if (name && pin && testSection && !testSection.classList.contains('hidden')) {
+        console.log('[DEBUG] Reconnected! Re-joining session...');
+        socket.emit('student_join', { name, pin, token: getStudentToken() });
+    }
+});
+
 socket.on('stop_test', () => {
+    cleanupProgress();
     clearInterval(timerInterval);
     testSection.classList.add('hidden');
     finishedSection.classList.remove('hidden');
     cheatWarningBanner.classList.add('hidden');
     document.getElementById('feedback-overlay').classList.add('hidden');
 });
+
+function cleanupProgress() {
+    if (currentTest) {
+        const savedPin = localStorage.getItem('studentPin');
+        localStorage.removeItem(`progress_${currentTest.title}_${savedPin}`);
+    }
+}
 
 socket.on('test_locked', (reason) => {
     clearInterval(timerInterval);
@@ -351,7 +393,9 @@ window.submitAnswer = (ans) => {
     if (perQuestionTimer) clearInterval(timerInterval);
     
     const q = currentTest.questions[currentQIndex];
-    
+    localAnswers[q.id] = ans;
+    saveLocalProgress();
+
     // Fuzzy matching for local feedback
     const isCorrect = checkCorrectness(ans, q.answer);
     
@@ -364,10 +408,21 @@ window.submitAnswer = (ans) => {
     }
 };
 
+function saveLocalProgress() {
+    if (!currentTest) return;
+    const savedPin = localStorage.getItem('studentPin');
+    const progress = {
+        qIndex: currentQIndex,
+        answers: localAnswers
+    };
+    localStorage.setItem(`progress_${currentTest.title}_${savedPin}`, JSON.stringify(progress));
+}
+
 socket.on('test_results', (data) => {
     // Remove pending message if exists
     const pending = document.getElementById('result-pending-msg');
     if (pending) pending.remove();
+    cleanupProgress();
 
     const existingScore = document.getElementById('final-score-display');
     if (existingScore) existingScore.remove();
@@ -416,6 +471,7 @@ function checkCorrectness(provided, actual) {
 
 function showFeedback(isCorrect, correctAnswer) {
     const overlay = document.getElementById('feedback-overlay');
+    // ... same logic ...
     const icon = document.getElementById('feedback-icon');
     const text = document.getElementById('feedback-text');
     const correctPara = document.getElementById('feedback-correct-answer');
@@ -436,6 +492,7 @@ function showFeedback(isCorrect, correctAnswer) {
     document.getElementById('feedback-next-btn').onclick = () => {
         overlay.classList.add('hidden');
         nextQuestion();
+        saveLocalProgress(); // Save after feedback is dismissed
     };
 }
 

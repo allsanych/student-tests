@@ -259,6 +259,7 @@ io.on('connection', (socket) => {
             session.students.push(student);
         }
         
+        persistActiveSessions(); // Save new student to disk
         socket.join(`session_${pin}`);
         io.to('teacher_room').emit('student_update', { pin: pin, students: session.students });
         socket.emit('start_test', { ...activeTest, questions: student.questions, settings: session.settings });
@@ -320,7 +321,7 @@ io.on('connection', (socket) => {
               autoSaveSession(session.pin);
               persistActiveSessions();
               delete saveTimeouts[session.pin];
-          }, 5000); 
+          }, 3000); 
       }
 
       io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
@@ -354,6 +355,7 @@ function checkCorrectness(provided, actual) {
             student.score = 0; // Annul score
             socket.emit('test_locked', 'Тест заблоковано через часті спроби списування (вихід за межі тесту 3+ рази)!');
             autoSaveSession(session.pin);
+            persistActiveSessions();
         }
         
         io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
@@ -370,6 +372,7 @@ function checkCorrectness(provided, actual) {
       student.status = 'disqualified';
       student.score = 0;
       autoSaveSession(session.pin);
+      persistActiveSessions();
       io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
     }
   });
@@ -442,6 +445,7 @@ function checkCorrectness(provided, actual) {
         student.grade12 = Math.round((student.score / totalPossible) * 12);
         
         autoSaveSession(session.pin);
+        persistActiveSessions();
         socket.emit('test_results', { 
             score: student.score, 
             grade12: student.grade12,
