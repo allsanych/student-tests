@@ -5,6 +5,8 @@ const testSection = document.getElementById('test-section');
 const finishedSection = document.getElementById('finished-section');
 const cheatWarningBanner = document.getElementById('cheat-warning-banner');
 const qContainer = document.getElementById('question-container');
+const breakSection = document.getElementById('break-section');
+const welcomeBanner = document.getElementById('welcome-banner');
 
 let currentTest = null;
 let currentQIndex = 0;
@@ -12,6 +14,7 @@ let initialHeight = window.innerHeight;
 let timerInterval = null;
 let timeLeft = 0;
 let perQuestionTimer = false;
+let isBreakActive = false;
 
 function getStudentToken() {
     let token = localStorage.getItem('studentToken');
@@ -73,6 +76,14 @@ socket.on('start_test', (test) => {
     joinSection.classList.add('hidden');
     waitingSection.classList.add('hidden');
     testSection.classList.remove('hidden');
+    breakSection.classList.add('hidden');
+    
+    // Update header banner
+    const greetingTitle = document.getElementById('greeting-title');
+    const greetingText = document.getElementById('greeting-text');
+    if (greetingTitle) greetingTitle.innerText = `📝 ${currentTest.title || 'Тестування'}`;
+    if (greetingText) greetingText.innerText = `PIN-код: ${localStorage.getItem('studentPin') || '---'}`;
+    if (welcomeBanner) welcomeBanner.style.padding = '10px 20px';
     
     // Global test timer check
     if (currentTest.settings && currentTest.settings.timerType === 'total') {
@@ -387,9 +398,42 @@ function showFeedback(isCorrect, correctAnswer) {
 }
 
 function nextQuestion() {
+    if (isBreakActive) {
+        testSection.classList.add('hidden');
+        breakSection.classList.remove('hidden');
+        return;
+    }
     currentQIndex++;
     renderQuestion();
 }
+
+document.getElementById('break-toggle-btn').onclick = () => {
+    isBreakActive = !isBreakActive;
+    const btn = document.getElementById('break-toggle-btn');
+    if (isBreakActive) {
+        btn.innerText = '✅ Перерву активовано';
+        btn.style.backgroundColor = 'var(--success)';
+        btn.style.color = '#fff';
+    } else {
+        btn.innerText = '⏸️ Перерва';
+        btn.style.backgroundColor = '#fff';
+        btn.style.color = 'var(--primary)';
+    }
+};
+
+document.getElementById('resume-test-btn').onclick = () => {
+    isBreakActive = false;
+    const btn = document.getElementById('break-toggle-btn');
+    btn.innerText = '⏸️ Перерва';
+    btn.style.backgroundColor = '#fff';
+    btn.style.color = 'var(--primary)';
+    
+    breakSection.classList.add('hidden');
+    testSection.classList.remove('hidden');
+    
+    currentQIndex++;
+    renderQuestion();
+};
 
 document.getElementById('history-btn').onclick = async () => {
     const container = document.getElementById('history-container');

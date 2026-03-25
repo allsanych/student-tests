@@ -22,9 +22,9 @@
 <body oncontextmenu="return false" oncopy="return false" oncut="return false" onpaste="return false" style="user-select: none;">
     <div class="watermark"></div>
     <div class="container">
-        <div class="welcome-banner">
-            <h2>Вас вітає Юрій Воротинцев</h2>
-            <p>Тестування почнеться за кілька хвилин. Будь ласка, приготуйтеся.</p>
+        <div id="welcome-banner" class="welcome-banner">
+            <h2 id="greeting-title">Вас вітає Юрій Воротинцев</h2>
+            <p id="greeting-text">Тестування почнеться за кілька хвилин. Будь ласка, приготуйтеся.</p>
         </div>
 
         <section id="join-section" class="card">
@@ -51,11 +51,21 @@
         </section>
 
         <section id="test-section" class="hidden">
-            <div id="test-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div id="test-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;">
                 <div id="timer-display" style="font-size: 1.5rem; font-weight: bold; color: var(--accent);">00:00</div>
-                <div id="progress-text" style="font-size: 0.9rem; color: #666;">Питання 1 з ...</div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <button id="break-toggle-btn" class="secondary" style="padding: 5px 10px; font-size: 0.85rem; background: #fff; border: 1px solid var(--primary); color: var(--primary);">⏸️ Перерва</button>
+                    <div id="progress-text" style="font-size: 0.9rem; color: #666;">Питання 1 з ...</div>
+                </div>
             </div>
             <div id="question-container"></div>
+        </section>
+
+        <section id="break-section" class="card hidden" style="text-align: center; padding: 40px 20px;">
+            <div style="font-size: 4rem; margin-bottom: 20px;">☕</div>
+            <h2>Перерва</h2>
+            <p style="margin-bottom: 30px;">Ви встановили режим перерви. Ваші результати збережені. Поверніться до тесту, коли будете готові.</p>
+            <button id="resume-test-btn" style="width: 100%; height: 60px; font-size: 1.3rem; background-color: var(--success);">▶️ ПРОДОВЖИТИ ТЕСТ (СТАРТ)</button>
         </section>
 
         <div id="feedback-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px;">
