@@ -102,7 +102,8 @@ module.exports = function setupSync(serverHostIo) {
         client.on('file_delete', applyRemoteDelete);
         client.on('disconnect', () => console.log('[SYNC] Disconnected from Master'));
 
-        const watcher = chokidar.watch([TESTS_DIR, RESULTS_DIR], { 
+        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'teacher', 'student', 'tests'], { 
+            ignored: [/node_modules/, /\.git/, /results/],
             ignoreInitial: true, 
             persistent: true, 
             usePolling: true,
@@ -121,12 +122,17 @@ module.exports = function setupSync(serverHostIo) {
             if (socket.handshake.auth.token === SYNC_SECRET) next();
             else next(new Error("Invalid sync secret"));
         });
-
+ 
         function broadcast(event, payload) {
             syncNamespace.emit(event, payload);
         }
-
-        const watcher = chokidar.watch([TESTS_DIR, RESULTS_DIR], { ignoreInitial: true, persistent: true, awaitWriteFinish: { stabilityThreshold: 500 } });
+ 
+        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'teacher', 'student', 'tests'], { 
+            ignored: [/node_modules/, /\.git/, /results/],
+            ignoreInitial: true, 
+            persistent: true,
+            awaitWriteFinish: { stabilityThreshold: 500 } 
+        });
         watcher.on('add', (p) => handleLocalUpdate(p, broadcast));
         watcher.on('change', (p) => handleLocalUpdate(p, broadcast));
         watcher.on('unlink', (p) => handleLocalDelete(p, broadcast));

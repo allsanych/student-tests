@@ -169,11 +169,21 @@
         </section>
     </div>
 
+    <div id="archive-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 id="archive-test-name">Архів результатів</h2>
+                <button onclick="document.getElementById('archive-modal').style.display='none'" style="background-color: var(--error);">Закрити</button>
+            </div>
+            <div id="archive-progress-grid" style="display: grid; gap: 15px; grid-template-columns: 1fr;"></div>
+        </div>
+    </div>
+
     <div id="qr-modal" onclick="this.style.display='none'">
         <img id="qr-modal-img" src="" alt="Enlarged QR Code">
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
 </body>
 </html>
