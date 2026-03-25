@@ -216,6 +216,14 @@ window.navigateTo = (path) => { currentPath = path; renderTestList(); };
 
 function renderTestList() {
     if (!testList || !breadcrumbs) return;
+    
+    // Safety check: if currentPath is not empty and no items exist in it, check if the folder still exists at all
+    const folderExists = currentPath === '' || tests.some(t => t.path === currentPath || t.path.startsWith(currentPath + '/'));
+    if (!folderExists) {
+        console.warn(`Path ${currentPath} no longer exists. Returning to root.`);
+        currentPath = '';
+    }
+
     breadcrumbs.innerHTML = `<span onclick="navigateTo('')" style="cursor:pointer">root</span> / ${currentPath}`;
     const items = tests.filter(t => {
         const dir = t.path.includes('/') ? t.path.substring(0, t.path.lastIndexOf('/')) : '';
