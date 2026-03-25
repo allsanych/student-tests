@@ -203,6 +203,11 @@ function triggerCheatWarning() {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') triggerCheatWarning(); });
 window.addEventListener('blur', () => triggerCheatWarning());
 window.addEventListener('resize', () => { 
+    // Ignore resize if an input is focused (keyboard opening/closing)
+    const activeEl = document.activeElement;
+    const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+    if (isInputFocused) return;
+
     // More lenient threshold for mobile keyboards
     if (currentTest && window.innerHeight < initialHeight * 0.5) triggerCheatWarning(); 
 });
@@ -302,16 +307,18 @@ function renderQuestion() {
             const lefts = q.pairs.map(p => p.left);
             const rights = [...q.pairs.map(p => p.right)].sort(() => Math.random() - 0.5);
             
-            inputHtml = `<div class="matching-container" style="display: flex; gap: 10px;">
-                <div style="flex: 1;">${lefts.map((l, i) => `<div style="padding: 10px; border: 1px solid var(--primary); margin-bottom: 5px; background: #e0e7ff; border-radius: 8px;">${l}</div>`).join('')}</div>
-                <div style="flex: 1;">${lefts.map((l, idx) => `
-                    <select id="match-ans-${idx}" style="width: 100%; padding: 10px; margin-bottom: 5px; border-radius: 8px;" data-left="${l}">
-                        <option value="">-- Оберіть пару --</option>
-                        ${rights.map(r => `<option value="${r}">${r}</option>`).join('')}
-                    </select>
-                `).join('')}</div>
+            inputHtml = `<div class="matching-container" style="display: flex; flex-direction: column; gap: 10px;">
+                ${lefts.map((l, i) => `
+                    <div style="display: flex; gap: 10px; align-items: stretch;">
+                        <div style="flex: 1; padding: 12px; border: 1px solid var(--primary); background: #e0e7ff; border-radius: 8px; display: flex; align-items: center; font-size: 0.95rem;">${l}</div>
+                        <select id="match-ans-${i}" style="flex: 1; min-width: 0; padding: 12px; border-radius: 8px; border: 1px solid #ddd; background: #fff;" data-left="${l}">
+                            <option value="">-- Оберіть --</option>
+                            ${rights.map(r => `<option value="${r}">${r}</option>`).join('')}
+                        </select>
+                    </div>
+                `).join('')}
             </div>
-            <button onclick="submitMatching()" style="width: 100%; margin-top: 10px;">Підтвердити</button>`;
+            <button onclick="submitMatching()" style="width: 100%; margin-top: 15px;">Підтвердити</button>`;
         }
 
         qContainer.innerHTML = `
