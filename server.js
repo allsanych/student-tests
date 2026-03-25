@@ -159,7 +159,9 @@ io.on('connection', (socket) => {
 
   function broadcastSessions() {
       io.to('teacher_room').emit('sessions_list_update', Object.values(activeSessions).map(s => ({
-          pin: s.pin, title: s.test.title, studentCount: s.students.length
+          pin: s.pin, 
+          title: (s.test && s.test.title) ? s.test.title : 'Без назви', 
+          studentCount: (s.students || []).length
       })));
   }
 
@@ -188,7 +190,12 @@ io.on('connection', (socket) => {
           if (!fs.existsSync(filePath)) return;
           
           const sessionData = JSON.parse(fs.readFileSync(filePath));
-          const pin = sessionData.pin;
+          const pin = sessionData.pin || filename.split('_')[1] || '0000';
+          
+          if (!sessionData.test) {
+              console.error(`[SESSION] Restore failed: No test data in ${filename}`);
+              return;
+          }
           
           if (activeSessions[pin]) {
               console.log(`[SESSION] Restore ignored: PIN ${pin} is already active.`);
