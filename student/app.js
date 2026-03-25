@@ -26,6 +26,20 @@ function getStudentToken() {
     return token;
 }
 
+function renderMath(element) {
+    if (window.renderMathInElement && element) {
+        renderMathInElement(element, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+            ],
+            throwOnError: false
+        });
+    }
+}
+
 document.getElementById('join-btn').onclick = (e) => {
     const name = document.getElementById('student-name').value.trim();
     const pin = document.getElementById('student-pin').value.trim();
@@ -331,16 +345,7 @@ function renderQuestion() {
                 </div>
             </div>
         `;
-
-        if (window.renderMathInElement) {
-            renderMathInElement(qContainer, {
-                delimiters: [
-                    {left: '$$', right: '$$', display: true},
-                    {left: '$', right: '$', display: false}
-                ],
-                throwOnError: false
-            });
-        }
+        renderMath(qContainer);
     } catch (err) {
         console.error('Render Error:', err);
         testSection.innerHTML = `
@@ -495,6 +500,7 @@ function showFeedback(isCorrect, correctAnswer) {
     
     const showCorrect = !currentTest || !currentTest.settings || currentTest.settings.showCorrect !== false;
     correctPara.innerHTML = (isCorrect || !showCorrect) ? '' : `Правильна відповідь:<br>${displayCorrect}`;
+    renderMath(overlay);
     
     document.getElementById('feedback-next-btn').onclick = () => {
         overlay.classList.add('hidden');

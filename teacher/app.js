@@ -151,6 +151,20 @@ async function updateServerInfo() {
     } catch (e) {}
 }
 
+function renderMath(element) {
+    if (window.renderMathInElement && element) {
+        renderMathInElement(element, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+            ],
+            throwOnError: false
+        });
+    }
+}
+
 function updateProgressGrid(students, containerId = 'students-progress-grid') {
     if (containerId === 'students-progress-grid') {
         document.getElementById('student-count').innerText = students.length;
@@ -185,6 +199,7 @@ function updateProgressGrid(students, containerId = 'students-progress-grid') {
             </div>
         </div>`;
     }).join('');
+    renderMath(grid);
 }
 
 async function refreshTests() {
@@ -241,6 +256,7 @@ function renderTestList() {
             </div>` : ''}
         </div>
     `).join('');
+    renderMath(testList);
 }
 
 window.goHome = () => {
@@ -509,6 +525,7 @@ function renderBuilder() {
         </div>
         `;
     }).join('');
+    renderMath(builder);
 }
 
 window.changeQuestionType = (idx, type) => {
@@ -606,6 +623,7 @@ function renderResults() {
             </div>
         `;
     }).join('');
+    renderMath(list);
     
     if (filtered.length === 0) {
         list.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">Результатів не знайдено 🔍</p>';
