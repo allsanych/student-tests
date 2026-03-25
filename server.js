@@ -105,8 +105,31 @@ app.use('/student', express.static(path.join(__dirname, 'student')));
 app.use('/media', express.static(path.join(__dirname, 'media')));
 
 // Storage for active session data
-const activeSessions = {}; // Maps PIN -> { id, pin, test, settings, path, students, fileName }
 const saveTimeouts = {}; // Maps PIN -> timeoutId for debounced saving
+
+const SESSIONS_FILE = path.join(__dirname, 'active_sessions.json');
+
+function persistActiveSessions() {
+    try {
+        fs.writeFileSync(SESSIONS_FILE, JSON.stringify(activeSessions, null, 2));
+    } catch (e) {
+        console.error('[PERSISTENCE] Error saving sessions:', e);
+    }
+}
+
+function loadPersistentSessions() {
+    try {
+        if (fs.existsSync(SESSIONS_FILE)) {
+            const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+            Object.assign(activeSessions, data);
+            console.log(`[PERSISTENCE] Recovered ${Object.keys(activeSessions).length} sessions.`);
+        }
+    } catch (e) {
+        console.error('[PERSISTENCE] Error loading sessions:', e);
+    }
+}
+
+loadPersistentSessions();
 
 // Socket.io Logic
 io.on('connection', (socket) => {
@@ -262,13 +285,15 @@ io.on('connection', (socket) => {
       if (Object.keys(student.results).length === student.questions.length) {
           student.endTime = Date.now();
           autoSaveSession(session.pin);
+          persistActiveSessions(); // Ensure state is saved when someone finishes
       } else {
           // Debounced save for progress
           if (saveTimeouts[session.pin]) clearTimeout(saveTimeouts[session.pin]);
           saveTimeouts[session.pin] = setTimeout(() => {
               autoSaveSession(session.pin);
+              persistActiveSessions();
               delete saveTimeouts[session.pin];
-          }, 5000); // Save every 5 seconds if there are updates
+          }, 5000); 
       }
 
       io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
@@ -351,6 +376,7 @@ function checkCorrectness(provided, actual) {
         settings: data.settings, students: existingStudents, fileName: fileName
     };
     
+    persistActiveSessions();
     broadcastSessions();
   });
 
@@ -369,6 +395,7 @@ function checkCorrectness(provided, actual) {
         
         delete activeSessions[pin];
         delete saveTimeouts[pin];
+        persistActiveSessions();
         broadcastSessions();
         console.log(`[SESSION] Session ${pin} successfully removed from active list.`);
     } catch (err) {

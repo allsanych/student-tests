@@ -303,6 +303,10 @@ function attachListeners() {
         }
     });
 
+    btn('refresh-tests-btn', () => {
+        refreshTests();
+    });
+
     // Archive
     btn('show-results-btn', () => {
         listSection.classList.add('hidden');

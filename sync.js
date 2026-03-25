@@ -102,7 +102,13 @@ module.exports = function setupSync(serverHostIo) {
         client.on('file_delete', applyRemoteDelete);
         client.on('disconnect', () => console.log('[SYNC] Disconnected from Master'));
 
-        const watcher = chokidar.watch([TESTS_DIR, RESULTS_DIR], { ignoreInitial: true, persistent: true, awaitWriteFinish: { stabilityThreshold: 500 } });
+        const watcher = chokidar.watch([TESTS_DIR, RESULTS_DIR], { 
+            ignoreInitial: true, 
+            persistent: true, 
+            usePolling: true,
+            interval: 1000,
+            awaitWriteFinish: { stabilityThreshold: 1000, pollInterval: 100 } 
+        });
         watcher.on('add', (p) => handleLocalUpdate(p, client.emit.bind(client)));
         watcher.on('change', (p) => handleLocalUpdate(p, client.emit.bind(client)));
         watcher.on('unlink', (p) => handleLocalDelete(p, client.emit.bind(client)));
