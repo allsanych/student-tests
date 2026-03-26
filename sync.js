@@ -100,7 +100,9 @@ module.exports = function setupSync(serverHostIo, onSyncUpdate) {
         });
 
         client.on('connect', () => {
-            logToFile(`[SYNC] Connected to Master! Pushing all local files...`);
+            logToFile(`[SYNC] Connected to Master! Requesting latest state and pushing local files...`);
+            client.emit('request_full_sync'); // Pull from master
+            
             const allFiles = [...getAllFiles(TESTS_DIR), ...getAllFiles(RESULTS_DIR), ...getAllFiles(GROUPS_DIR)];
             allFiles.forEach(f => {
                 const relPath = getRelativePath(f);
@@ -151,6 +153,25 @@ module.exports = function setupSync(serverHostIo, onSyncUpdate) {
         syncNamespace.on('connection', (socket) => {
             logToFile(`[SYNC] New sync client connected: ${socket.id}`);
             
+            socket.on('request_full_sync', () => {
+                logToFile(`[SYNC] Client ${socket.id} requested full sync. Pushing all master files...`);
+                const allFiles = [
+                    ...getAllFiles(TESTS_DIR), 
+                    ...getAllFiles(RESULTS_DIR), 
+                    ...getAllFiles(GROUPS_DIR),
+                    path.join(__dirname, 'active_sessions.json')
+                ];
+                allFiles.forEach(f => {
+                    const relPath = getRelativePath(f);
+                    if (relPath && fs.existsSync(f)) {
+                        try {
+                            const content = fs.readFileSync(f, 'utf8');
+                            socket.emit('file_update', { path: relPath, content, time: Date.now() });
+                        } catch (e) {}
+                    }
+                });
+            });
+
             socket.on('file_update', (data) => {
                 applyRemoteUpdate(data);
                 socket.broadcast.emit('file_update', data); 
