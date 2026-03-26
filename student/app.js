@@ -399,12 +399,14 @@ function renderQuestion() {
             
             inputHtml = `<div class="matching-container" style="display: flex; flex-direction: column; gap: 10px;">
                 ${lefts.map((l, i) => `
-                    <div style="display: flex; gap: 10px; align-items: stretch;">
+                    <div style="display: flex; gap: 10px; align-items: stretch; position: relative;">
                         <div style="flex: 1; padding: 12px; border: 1px solid var(--primary); background: #e0e7ff; border-radius: 8px; display: flex; align-items: center; font-size: 0.95rem;">${l}</div>
-                        <select id="match-ans-${i}" style="flex: 1; min-width: 0; padding: 12px; border-radius: 8px; border: 1px solid #ddd; background: #fff;" data-left="${l}">
-                            <option value="">-- Оберіть --</option>
-                            ${rights.map(r => `<option value="${r}">${r}</option>`).join('')}
-                        </select>
+                        <div class="custom-select-container" id="match-container-${i}">
+                            <div class="custom-select-trigger" onclick="toggleMatchingSelect(${i})" id="match-trigger-${i}" data-value="" data-left="${l.replace(/"/g, '&quot;')}">-- Оберіть --</div>
+                            <div class="custom-select-options">
+                                ${rights.map(r => `<div class="custom-select-option" onclick="selectMatchingOption(${i}, '${r.replace(/'/g, "\\'")}')">${r}</div>`).join('')}
+                            </div>
+                        </div>
                     </div>
                 `).join('')}
             </div>
@@ -470,12 +472,34 @@ window.submitMatching = () => {
     if (!q.pairs) return;
     const ans = {};
     for (let i = 0; i < q.pairs.length; i++) {
-        const select = document.getElementById(`match-ans-${i}`);
-        if (!select.value) return alert('Знайдіть пару для всіх елементів');
-        ans[select.dataset.left] = select.value;
+        const trigger = document.getElementById(`match-trigger-${i}`);
+        const val = trigger.dataset.value;
+        if (!val) return alert('Знайдіть пару для всіх елементів');
+        ans[trigger.dataset.left] = val;
     }
     submitAnswer(ans);
 };
+
+window.toggleMatchingSelect = (index) => {
+    const container = document.getElementById(`match-container-${index}`);
+    const isOpen = container.classList.contains('open');
+    document.querySelectorAll('.custom-select-container').forEach(c => c.classList.remove('open'));
+    if (!isOpen) container.classList.add('open');
+};
+
+window.selectMatchingOption = (index, value) => {
+    const trigger = document.getElementById(`match-trigger-${index}`);
+    trigger.innerText = value;
+    trigger.dataset.value = value;
+    document.getElementById(`match-container-${index}`).classList.remove('open');
+    renderMath(trigger);
+};
+
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-select-container')) {
+        document.querySelectorAll('.custom-select-container').forEach(c => c.classList.remove('open'));
+    }
+});
 
 window.submitAnswer = (ans) => {
     if (perQuestionTimer) clearInterval(timerInterval);

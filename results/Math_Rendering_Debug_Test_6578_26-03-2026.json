@@ -1,0 +1,94 @@
+{
+  "test": {
+    "title": "Math Rendering Debug Test",
+    "questions": [
+      {
+        "id": 1,
+        "type": "matching",
+        "text": "Встановіть відповідність між функцією та її властивістю:",
+        "pairs": [
+          {
+            "left": "$y = x^2$",
+            "right": "Парабола, симетрична відносно осі $OY$"
+          },
+          {
+            "left": "$y = \\log_2(x)$",
+            "right": "Логарифмічна функція, визначена для $x > 0$"
+          },
+          {
+            "left": "$y = 2x + 1$",
+            "right": "Лінійна функція, зростаюча"
+          }
+        ],
+        "answer": {
+          "$y = x^2$": "Парабола, симетрична відносно осі $OY$",
+          "$y = \\log_2(x)$": "Логарифмічна функція, визначена для $x > 0$",
+          "$y = 2x + 1$": "Лінійна функція, зростаюча"
+        },
+        "score": 3,
+        "time": 120
+      }
+    ],
+    "folder": "Debug"
+  },
+  "path": "Debug/Math_Matching_Test.json",
+  "sessionId": "MN7I8HSA",
+  "pin": "6578",
+  "students": [
+    {
+      "id": "4C8KpjgsC3-zxg4HAAAH",
+      "token": "std_f0lxf4k5cmn7iamyl",
+      "name": "Test Bot",
+      "group": "Інша",
+      "answers": {
+        "1": {
+          "answer": "ЧАС ВИЙШОВ",
+          "isViolated": false
+        }
+      },
+      "violations": [],
+      "score": 0,
+      "status": "online",
+      "questions": [
+        {
+          "id": 1,
+          "type": "matching",
+          "text": "Встановіть відповідність між функцією та її властивістю:",
+          "pairs": [
+            {
+              "left": "$y = x^2$",
+              "right": "Парабола, симетрична відносно осі $OY$"
+            },
+            {
+              "left": "$y = \\log_2(x)$",
+              "right": "Логарифмічна функція, визначена для $x > 0$"
+            },
+            {
+              "left": "$y = 2x + 1$",
+              "right": "Лінійна функція, зростаюча"
+            }
+          ],
+          "answer": {
+            "$y = x^2$": "Парабола, симетрична відносно осі $OY$",
+            "$y = \\log_2(x)$": "Логарифмічна функція, визначена для $x > 0$",
+            "$y = 2x + 1$": "Лінійна функція, зростаюча"
+          },
+          "score": 3,
+          "time": 120
+        }
+      ],
+      "results": {
+        "1": {
+          "isCorrect": false,
+          "answer": "ЧАС ВИЙШОВ",
+          "isViolated": false,
+          "score": 0
+        }
+      },
+      "startTime": 1774531596479,
+      "endTime": 1774531752435,
+      "grade12": 0
+    }
+  ],
+  "timestamp": "2026-03-26T13:29:12.436Z"
+}
