@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student App - Тестування</title>
-    <link rel="stylesheet" href="/shared.css">
+    <link rel="stylesheet" href="/shared.css?v=2">
     <!-- KaTeX for Math Support -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
@@ -19,12 +19,12 @@
         .option-label.selected { background: #eef2ff; border-color: var(--primary); border-width: 2px; }
     </style>
 </head>
-<body>
+<body oncontextmenu="return false" oncopy="return false" oncut="return false" onpaste="return false" style="user-select: none;">
     <div class="watermark"></div>
     <div class="container">
-        <div class="welcome-banner">
-            <h2>Вас вітає Юрій Воротинцев</h2>
-            <p>Тестування почнеться за кілька хвилин. Будь ласка, приготуйтеся.</p>
+        <div id="welcome-banner" class="welcome-banner">
+            <h2 id="greeting-title">Вас вітає Юрій Воротинцев</h2>
+            <p id="greeting-text">Тестування почнеться за кілька хвилин. Будь ласка, приготуйтеся.</p>
         </div>
 
         <section id="join-section" class="card">
@@ -32,11 +32,32 @@
                 <img src="/media/logo.png" class="header-logo" alt="Logo">
                 <h1 style="margin-bottom: 0;">Вхід до тесту</h1>
             </div>
-            <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Введіть прізвище та ім'я</label>
-            <input type="text" id="student-name" placeholder="Напр. Іванов Іван">
-            <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">PIN-код (якщо є)</label>
-            <input type="text" id="student-pin" placeholder="PIN-код" maxlength="6">
-            <button id="join-btn" style="width: 100%; height: 50px; font-size: 1.1rem;">Приєднатися</button>
+            <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Виберіть ваш навчальний заклад або групу</label>
+            <select id="student-group" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 8px; border: 1px solid #ddd;"></select>
+
+            <div id="name-selection-container">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Виберіть ваше прізвище та ім'я</label>
+                <select id="student-name-select" style="width: 100%; margin-bottom: 10px; padding: 12px; border-radius: 8px; border: 1px solid #ddd;"></select>
+            </div>
+
+            <div id="manual-name-container" class="hidden">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Введіть прізвище та ім'я (для нових)</label>
+                <input type="text" id="student-name-input" placeholder="Напр. Іванов Іван" style="width: 100%; margin-bottom: 10px;">
+            </div>
+
+            <label class="checkbox-container" style="margin-bottom: 20px; font-size: 0.85rem; color: #555;">
+                <input type="checkbox" id="no-name-in-list"> Мене немає в списку (ввести вручну)
+            </label>
+
+            <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Введіть PIN-код або Групу (ОБОВ'ЯЗКОВО)</label>
+            <input type="text" id="student-pin" placeholder="PIN-код (напр. 7777)" maxlength="15">
+            <button id="join-btn" style="width: 100%; height: 50px; font-size: 1.1rem;">Приєднатися (На весь екран)</button>
+            <button id="history-btn" class="secondary" style="width: 100%; margin-top: 10px; background-color: #f3f4f6; color: #374151; font-weight: bold;">📋 Мої оцінки (Історія)</button>
+            
+            <div id="history-container" class="hidden" style="margin-top: 15px; text-align: left; background: #f8faff; padding: 15px; border-radius: 8px; border: 1px solid #e0e7ff; max-height: 250px; overflow-y: auto;">
+                <h3 style="margin-top: 0; color: var(--primary);">Історія тестувань</h3>
+                <div id="history-list" style="font-size: 0.9rem;"></div>
+            </div>
         </section>
 
         <section id="waiting-section" class="card hidden">
@@ -45,11 +66,21 @@
         </section>
 
         <section id="test-section" class="hidden">
-            <div id="test-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div id="test-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;">
                 <div id="timer-display" style="font-size: 1.5rem; font-weight: bold; color: var(--accent);">00:00</div>
-                <div id="progress-text" style="font-size: 0.9rem; color: #666;">Питання 1 з ...</div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <button id="break-toggle-btn" class="secondary" style="padding: 5px 10px; font-size: 0.85rem; background: #fff; border: 1px solid var(--primary); color: var(--primary);">⏸️ Перерва</button>
+                    <div id="progress-text" style="font-size: 0.9rem; color: #666;">Питання 1 з ...</div>
+                </div>
             </div>
             <div id="question-container"></div>
+        </section>
+
+        <section id="break-section" class="card hidden" style="text-align: center; padding: 40px 20px;">
+            <div style="font-size: 4rem; margin-bottom: 20px;">☕</div>
+            <h2>Перерва</h2>
+            <p style="margin-bottom: 30px;">Ви встановили режим перерви. Ваші результати збережені. Поверніться до тесту, коли будете готові.</p>
+            <button id="resume-test-btn" style="width: 100%; height: 60px; font-size: 1.3rem; background-color: var(--success);">▶️ ПРОДОВЖИТИ ТЕСТ (СТАРТ)</button>
         </section>
 
         <div id="feedback-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px;">
@@ -69,13 +100,15 @@
             </div>
         </div>
 
-        <section id="finished-section" class="card hidden">
-            <h2>Тест завершено!</h2>
-            <p>Дякуємо за участь. Ваші результати збережено.</p>
+        <section id="finished-section" class="card hidden" style="text-align: center;">
+            <h2 style="color: var(--success); margin-bottom: 10px;">Тест завершено!</h2>
+            <p style="font-size: 1.1rem; margin-bottom: 5px;">Дякуємо за участь. Ваші результати збережено.</p>
+            <p style="color: #666; font-size: 0.9rem;">(можете закрити вкладку)</p>
+            <button id="retake-btn" style="margin-top: 20px; padding: 15px; font-size: 1.1rem; background-color: var(--primary); width: 100%; box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.4);">🔁 Перездати тест</button>
         </section>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=2"></script>
 </body>
 </html>

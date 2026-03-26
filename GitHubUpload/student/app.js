@@ -5,6 +5,8 @@ const testSection = document.getElementById('test-section');
 const finishedSection = document.getElementById('finished-section');
 const cheatWarningBanner = document.getElementById('cheat-warning-banner');
 const qContainer = document.getElementById('question-container');
+const breakSection = document.getElementById('break-section');
+const welcomeBanner = document.getElementById('welcome-banner');
 
 let currentTest = null;
 let currentQIndex = 0;
@@ -12,48 +14,191 @@ let initialHeight = window.innerHeight;
 let timerInterval = null;
 let timeLeft = 0;
 let perQuestionTimer = false;
+let isBreakActive = false;
+let localAnswers = {};
+let studentGroups = [];
+
+function getStudentToken() {
+    let token = localStorage.getItem('studentToken');
+    if (!token) {
+        token = 'std_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+        localStorage.setItem('studentToken', token);
+    }
+    return token;
+}
+
+function renderMath(element) {
+    if (window.renderMathInElement && element) {
+        renderMathInElement(element, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+            ],
+            throwOnError: false
+        });
+    }
+}
 
 document.getElementById('join-btn').onclick = (e) => {
-    const name = document.getElementById('student-name').value.trim();
+    const groupSelect = document.getElementById('student-group');
+    const nameSelect = document.getElementById('student-name-select');
+    const nameInput = document.getElementById('student-name-input');
+    const noNameCheckbox = document.getElementById('no-name-in-list');
     const pin = document.getElementById('student-pin').value.trim();
-    if (!name) return alert('Будь ласка, введіть прізвище та ім\'я');
+
+    let name = '';
+    let group = '';
+
+    if (noNameCheckbox.checked) {
+        name = nameInput.value.trim();
+        group = 'Інша';
+    } else {
+        name = nameSelect.value;
+        group = groupSelect.value;
+    }
+
+    if (!name) return alert('Будь ласка, вкажіть прізвище та ім\'я');
+    if (!pin) return alert('Будь ласка, введіть PIN-код або Групу!');
+    
+    // Enter fullscreen
+    try {
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen();
+        } else if (document.documentElement.webkitRequestFullscreen) {
+            document.documentElement.webkitRequestFullscreen();
+        }
+    } catch (e) {}
     
     // Disable button to prevent double clicks
     e.target.disabled = true;
+    const oldText = e.target.innerText;
     e.target.innerText = 'Приєднуємо...';
     
     // Save to local storage for persistence
     localStorage.setItem('studentName', name);
+    localStorage.setItem('studentGroup', group);
     localStorage.setItem('studentPin', pin);
     
-    socket.emit('student_join', { name, pin });
+    socket.emit('student_join', { name, group, pin, token: getStudentToken() });
 };
 
-// Auto-populate and optional auto-join
-window.addEventListener('load', () => {
-    const savedName = localStorage.getItem('studentName');
-    const savedPin = localStorage.getItem('studentPin');
-    if (savedName) {
-        document.getElementById('student-name').value = savedName;
-        if (savedPin) document.getElementById('student-pin').value = savedPin;
+// Auto-populate and Group fetch
+window.addEventListener('load', async () => {
+    const groupSelect = document.getElementById('student-group');
+    const nameSelect = document.getElementById('student-name-select');
+    const nameInput = document.getElementById('student-name-input');
+    const noNameCheckbox = document.getElementById('no-name-in-list');
+    const nameContainer = document.getElementById('name-selection-container');
+    const manualContainer = document.getElementById('manual-name-container');
+
+    // Toggle manual entry
+    noNameCheckbox.onchange = () => {
+        if (noNameCheckbox.checked) {
+            nameContainer.classList.add('hidden');
+            manualContainer.classList.remove('hidden');
+        } else {
+            nameContainer.classList.remove('hidden');
+            manualContainer.classList.add('hidden');
+        }
+    };
+
+    // Load groups
+    try {
+        const res = await fetch('/api/groups');
+        studentGroups = await res.json();
         
-        // Small delay to ensure socket is connected
-        setTimeout(() => {
-            if (savedName && socket.connected) {
-                socket.emit('student_join', { name: savedName, pin: savedPin });
+        // Populate groups
+        groupSelect.innerHTML = '<option value="">-- Виберіть групу --</option>' + 
+            studentGroups.map(g => `<option value="${g.name}">${g.name}</option>`).join('') +
+            '<option value="Інша">Інша / Немає в списку</option>';
+
+        groupSelect.onchange = () => {
+            const selectedGroup = studentGroups.find(g => g.name === groupSelect.value);
+            if (selectedGroup) {
+                nameSelect.innerHTML = '<option value="">-- Виберіть Прізвище Ім\'я --</option>' + 
+                    selectedGroup.students.map(s => `<option value="${s}">${s}</option>`).join('');
+                noNameCheckbox.checked = false;
+                noNameCheckbox.onchange();
+            } else if (groupSelect.value === 'Інша') {
+                noNameCheckbox.checked = true;
+                noNameCheckbox.onchange();
+            } else {
+                nameSelect.innerHTML = '';
             }
-        }, 1000);
+        };
+
+        // Attempt restore from localStorage
+        const savedGroup = localStorage.getItem('studentGroup');
+        const savedName = localStorage.getItem('studentName');
+        const savedPin = localStorage.getItem('studentPin');
+
+        if (savedGroup) {
+            groupSelect.value = savedGroup;
+            groupSelect.onchange();
+            if (savedName && !savedGroup.includes('Інша')) {
+                nameSelect.value = savedName;
+            } else if (savedName) {
+                nameInput.value = savedName;
+            }
+        }
+        if (savedPin) {
+            document.getElementById('student-pin').value = savedPin;
+        }
+    } catch (e) {
+        console.error('Failed to load groups:', e);
+        // Fallback to manual if API fails
+        noNameCheckbox.checked = true;
+        noNameCheckbox.onchange();
     }
 });
 
-socket.on('join_error', (msg) => { alert(msg); });
+socket.on('join_error', (msg) => { 
+    alert(msg); 
+    const btn = document.getElementById('join-btn');
+    btn.disabled = false;
+    btn.innerText = 'Приєднатися (На весь екран)';
+});
 
 socket.on('start_test', (test) => {
+    const savedPin = localStorage.getItem('studentPin');
+    const progressKey = `progress_${test.title}_${savedPin}`;
+    const savedProgress = localStorage.getItem(progressKey);
+    
     currentTest = test;
     currentQIndex = 0;
+    localAnswers = {};
+
+    if (savedProgress) {
+        try {
+            const data = JSON.parse(savedProgress);
+            if (confirm('Виявлено незавершений тест. Продовжити з місця зупинки?')) {
+                currentQIndex = data.qIndex || 0;
+                localAnswers = data.answers || {};
+                // Re-sync answers to server
+                Object.keys(localAnswers).forEach(qId => {
+                    socket.emit('submit_answer', { questionId: qId, answer: localAnswers[qId] });
+                });
+            } else {
+                localStorage.removeItem(progressKey);
+            }
+        } catch (e) {
+            console.error('Error loading progress:', e);
+        }
+    }
+
     joinSection.classList.add('hidden');
     waitingSection.classList.add('hidden');
     testSection.classList.remove('hidden');
+    breakSection.classList.add('hidden');
+    
+    // Update header banner
+    const greetingTitle = document.getElementById('greeting-title');
+    const greetingText = document.getElementById('greeting-text');
+    if (greetingTitle) greetingTitle.innerText = `📝 ${currentTest.title || 'Тестування'}`;
+    if (greetingText) greetingText.innerText = `PIN-код: ${savedPin || '---'}`;
+    if (welcomeBanner) welcomeBanner.style.padding = '10px 20px';
     
     // Global test timer check
     if (currentTest.settings && currentTest.settings.timerType === 'total') {
@@ -64,7 +209,17 @@ socket.on('start_test', (test) => {
     renderQuestion();
 });
 
+socket.on('connect', () => {
+    const name = localStorage.getItem('studentName');
+    const pin = localStorage.getItem('studentPin');
+    if (name && pin && testSection && !testSection.classList.contains('hidden')) {
+        console.log('[DEBUG] Reconnected! Re-joining session...');
+        socket.emit('student_join', { name, pin, token: getStudentToken() });
+    }
+});
+
 socket.on('stop_test', () => {
+    cleanupProgress();
     clearInterval(timerInterval);
     testSection.classList.add('hidden');
     finishedSection.classList.remove('hidden');
@@ -72,6 +227,53 @@ socket.on('stop_test', () => {
     document.getElementById('feedback-overlay').classList.add('hidden');
 });
 
+function cleanupProgress() {
+    if (currentTest) {
+        const savedPin = localStorage.getItem('studentPin');
+        localStorage.removeItem(`progress_${currentTest.title}_${savedPin}`);
+    }
+}
+
+socket.on('test_locked', (reason) => {
+    clearInterval(timerInterval);
+    testSection.classList.add('hidden');
+    joinSection.classList.add('hidden');
+    waitingSection.classList.add('hidden');
+    finishedSection.innerHTML = `<h2>🚫 ${reason}</h2><p>Ваш поточний результат анульовано. Зверніться до викладача.</p>`;
+    finishedSection.classList.remove('hidden');
+    cheatWarningBanner.classList.add('hidden');
+    
+    const tryBtn = document.createElement('button');
+    tryBtn.innerText = 'Спробувати знову';
+    tryBtn.style.marginTop = '20px';
+    tryBtn.onclick = () => window.location.reload();
+    finishedSection.appendChild(tryBtn);
+    
+    document.getElementById('feedback-overlay').classList.add('hidden');
+});
+
+const retakeBtn = document.getElementById('retake-btn');
+if (retakeBtn) {
+    retakeBtn.onclick = () => {
+        let baseName = localStorage.getItem('studentName') || '';
+        baseName = baseName.replace(/ \(Спроба \d+\)$/, '');
+        
+        let attempt = parseInt(localStorage.getItem('studentAttempt') || '1');
+        attempt++;
+        localStorage.setItem('studentAttempt', attempt.toString());
+        
+        const newName = `${baseName} (Спроба ${attempt})`;
+        document.getElementById('student-name').value = newName;
+        
+        // Reset UI
+        finishedSection.classList.add('hidden');
+        joinSection.classList.remove('hidden');
+        
+        const joinBtn = document.getElementById('join-btn');
+        joinBtn.disabled = false;
+        joinBtn.innerText = 'Приєднатися (На весь екран)';
+    };
+}
 function triggerCheatWarning() {
     if (!currentTest || !currentTest.questions[currentQIndex]) return;
     
@@ -91,6 +293,11 @@ function triggerCheatWarning() {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') triggerCheatWarning(); });
 window.addEventListener('blur', () => triggerCheatWarning());
 window.addEventListener('resize', () => { 
+    // Ignore resize if an input is focused (keyboard opening/closing)
+    const activeEl = document.activeElement;
+    const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+    if (isInputFocused) return;
+
     // More lenient threshold for mobile keyboards
     if (currentTest && window.innerHeight < initialHeight * 0.5) triggerCheatWarning(); 
 });
@@ -138,7 +345,18 @@ function renderQuestion() {
         if (!q) {
             clearInterval(timerInterval);
             socket.emit('finish_test');
-            testSection.innerHTML = '<div class="card"><h2>Всі питання пройдено! Очікуйте завершення...</h2></div>';
+            
+            // Switch to finished section immediately
+            testSection.classList.add('hidden');
+            finishedSection.classList.remove('hidden');
+            
+            // Show a pending message until results are received
+            const statusMsg = document.createElement('p');
+            statusMsg.id = 'result-pending-msg';
+            statusMsg.innerText = 'Всі питання пройдено! Очікуйте нарахування балів...';
+            statusMsg.style.color = 'var(--primary)';
+            statusMsg.style.fontWeight = 'bold';
+            finishedSection.querySelector('h2').after(statusMsg);
             return;
         }
 
@@ -175,6 +393,22 @@ function renderQuestion() {
                 <textarea id="text-ans" placeholder="Ваша відповідь..." style="width: 100%; height: 80px; margin-bottom: 10px; padding: 10px; border-radius: 8px; border: 1px solid #ddd;"></textarea>
                 <button onclick="submitText()" style="width: 100%;">Підтвердити</button>
             `;
+        } else if (q.type === 'matching') {
+            const lefts = q.pairs.map(p => p.left);
+            const rights = [...q.pairs.map(p => p.right)].sort(() => Math.random() - 0.5);
+            
+            inputHtml = `<div class="matching-container" style="display: flex; flex-direction: column; gap: 10px;">
+                ${lefts.map((l, i) => `
+                    <div style="display: flex; gap: 10px; align-items: stretch;">
+                        <div style="flex: 1; padding: 12px; border: 1px solid var(--primary); background: #e0e7ff; border-radius: 8px; display: flex; align-items: center; font-size: 0.95rem;">${l}</div>
+                        <select id="match-ans-${i}" style="flex: 1; min-width: 0; padding: 12px; border-radius: 8px; border: 1px solid #ddd; background: #fff;" data-left="${l}">
+                            <option value="">-- Оберіть --</option>
+                            ${rights.map(r => `<option value="${r}">${r}</option>`).join('')}
+                        </select>
+                    </div>
+                `).join('')}
+            </div>
+            <button onclick="submitMatching()" style="width: 100%; margin-top: 15px;">Підтвердити</button>`;
         }
 
         qContainer.innerHTML = `
@@ -187,16 +421,7 @@ function renderQuestion() {
                 </div>
             </div>
         `;
-
-        if (window.renderMathInElement) {
-            renderMathInElement(qContainer, {
-                delimiters: [
-                    {left: '$$', right: '$$', display: true},
-                    {left: '$', right: '$', display: false}
-                ],
-                throwOnError: false
-            });
-        }
+        renderMath(qContainer);
     } catch (err) {
         console.error('Render Error:', err);
         testSection.innerHTML = `
@@ -240,11 +465,25 @@ window.submitText = () => {
     submitAnswer(val);
 };
 
+window.submitMatching = () => {
+    const q = currentTest.questions[currentQIndex];
+    if (!q.pairs) return;
+    const ans = {};
+    for (let i = 0; i < q.pairs.length; i++) {
+        const select = document.getElementById(`match-ans-${i}`);
+        if (!select.value) return alert('Знайдіть пару для всіх елементів');
+        ans[select.dataset.left] = select.value;
+    }
+    submitAnswer(ans);
+};
+
 window.submitAnswer = (ans) => {
     if (perQuestionTimer) clearInterval(timerInterval);
     
     const q = currentTest.questions[currentQIndex];
-    
+    localAnswers[q.id] = ans;
+    saveLocalProgress();
+
     // Fuzzy matching for local feedback
     const isCorrect = checkCorrectness(ans, q.answer);
     
@@ -257,10 +496,56 @@ window.submitAnswer = (ans) => {
     }
 };
 
+function saveLocalProgress() {
+    if (!currentTest) return;
+    const savedPin = localStorage.getItem('studentPin');
+    const progress = {
+        qIndex: currentQIndex,
+        answers: localAnswers
+    };
+    localStorage.setItem(`progress_${currentTest.title}_${savedPin}`, JSON.stringify(progress));
+}
+
+socket.on('test_results', (data) => {
+    // Remove pending message if exists
+    const pending = document.getElementById('result-pending-msg');
+    if (pending) pending.remove();
+    cleanupProgress();
+
+    const existingScore = document.getElementById('final-score-display');
+    if (existingScore) existingScore.remove();
+
+    const scoreDisplay = document.createElement('div');
+    scoreDisplay.id = 'final-score-display';
+    scoreDisplay.style.fontSize = '1.8rem';
+    scoreDisplay.style.fontWeight = 'bold';
+    scoreDisplay.style.color = 'var(--primary)';
+    scoreDisplay.style.margin = '20px 0';
+    scoreDisplay.innerText = `Ваша оцінка: ${data.grade12} балів (за 12-бальною шкалою)`;
+    // data.score is the raw score if we want to show it: ` (${data.score} з ${data.maxPossible})`
+    
+    // Check settings sent from server
+    const showScore = currentTest && currentTest.settings && currentTest.settings.showScore !== false;
+    
+    if (showScore) {
+        finishedSection.querySelector('h2').after(scoreDisplay);
+    }
+    
+    // Ensure we are in finished section
+    testSection.classList.add('hidden');
+    finishedSection.classList.remove('hidden');
+});
+
 function checkCorrectness(provided, actual) {
     if (Array.isArray(actual)) {
         if (!Array.isArray(provided)) return false;
         return actual.length === provided.length && actual.every(v => provided.includes(v));
+    }
+    if (typeof actual === 'object' && actual !== null) {
+        if (typeof provided !== 'object' || provided === null) return false;
+        const keys = Object.keys(actual);
+        if (keys.length !== Object.keys(provided).length) return false;
+        return keys.every(k => checkCorrectness(provided[k], actual[k]));
     }
     let pStr = String(provided).trim().toLowerCase().replace(',', '.');
     let aStr = String(actual).trim().toLowerCase().replace(',', '.');
@@ -274,6 +559,7 @@ function checkCorrectness(provided, actual) {
 
 function showFeedback(isCorrect, correctAnswer) {
     const overlay = document.getElementById('feedback-overlay');
+    // ... same logic ...
     const icon = document.getElementById('feedback-icon');
     const text = document.getElementById('feedback-text');
     const correctPara = document.getElementById('feedback-correct-answer');
@@ -284,15 +570,88 @@ function showFeedback(isCorrect, correctAnswer) {
     text.innerText = isCorrect ? 'Правильно!' : 'Неправильно';
     
     let displayCorrect = Array.isArray(correctAnswer) ? correctAnswer.join(', ') : correctAnswer;
-    correctPara.innerText = isCorrect ? '' : `Правильна відповідь: ${displayCorrect}`;
+    if (typeof correctAnswer === 'object' && correctAnswer !== null && !Array.isArray(correctAnswer)) {
+        displayCorrect = Object.entries(correctAnswer).map(([k, v]) => `${k} ➔ ${v}`).join('<br>');
+    }
+    
+    const showCorrect = !currentTest || !currentTest.settings || currentTest.settings.showCorrect !== false;
+    correctPara.innerHTML = (isCorrect || !showCorrect) ? '' : `Правильна відповідь:<br>${displayCorrect}`;
+    renderMath(overlay);
     
     document.getElementById('feedback-next-btn').onclick = () => {
         overlay.classList.add('hidden');
         nextQuestion();
+        saveLocalProgress(); // Save after feedback is dismissed
     };
 }
 
 function nextQuestion() {
+    if (isBreakActive) {
+        testSection.classList.add('hidden');
+        breakSection.classList.remove('hidden');
+        return;
+    }
     currentQIndex++;
     renderQuestion();
 }
+
+document.getElementById('break-toggle-btn').onclick = () => {
+    isBreakActive = !isBreakActive;
+    const btn = document.getElementById('break-toggle-btn');
+    if (isBreakActive) {
+        btn.innerText = '✅ Перерву активовано';
+        btn.style.backgroundColor = 'var(--success)';
+        btn.style.color = '#fff';
+    } else {
+        btn.innerText = '⏸️ Перерва';
+        btn.style.backgroundColor = '#fff';
+        btn.style.color = 'var(--primary)';
+    }
+};
+
+document.getElementById('resume-test-btn').onclick = () => {
+    isBreakActive = false;
+    const btn = document.getElementById('break-toggle-btn');
+    btn.innerText = '⏸️ Перерва';
+    btn.style.backgroundColor = '#fff';
+    btn.style.color = 'var(--primary)';
+    
+    breakSection.classList.add('hidden');
+    testSection.classList.remove('hidden');
+    
+    currentQIndex++;
+    renderQuestion();
+};
+
+document.getElementById('history-btn').onclick = async () => {
+    const container = document.getElementById('history-container');
+    const list = document.getElementById('history-list');
+    
+    if (!container.classList.contains('hidden')) {
+        container.classList.add('hidden');
+        return;
+    }
+    
+    list.innerHTML = 'Завантаження...';
+    container.classList.remove('hidden');
+    
+    try {
+        const token = getStudentToken();
+        const res = await fetch(`/api/student/history?token=${token}`);
+        const history = await res.json();
+        
+        if (!history || history.length === 0) {
+            list.innerHTML = '<p style="color: #666;">Історія порожня.</p>';
+        } else {
+            list.innerHTML = history.reverse().map(h => `
+                <div style="border-bottom: 1px solid #ccc; padding: 10px 0;">
+                    <div style="font-weight: bold; margin-bottom: 4px;">${h.testTitle}</div>
+                    <div>Оцінка: <span style="color: var(--success); font-weight: bold; font-size: 1.1rem;">${h.score}</span></div>
+                    <div style="color: #666; margin-top: 4px;">${new Date(h.date).toLocaleString('uk-UA')}</div>
+                </div>
+            `).join('');
+        }
+    } catch (e) {
+        list.innerHTML = '<p style="color: var(--error);">Помилка завантаження історії.</p>';
+    }
+};

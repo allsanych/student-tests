@@ -16,6 +16,7 @@ let timeLeft = 0;
 let perQuestionTimer = false;
 let isBreakActive = false;
 let localAnswers = {};
+let studentGroups = [];
 
 function getStudentToken() {
     let token = localStorage.getItem('studentToken');
@@ -41,9 +42,24 @@ function renderMath(element) {
 }
 
 document.getElementById('join-btn').onclick = (e) => {
-    const name = document.getElementById('student-name').value.trim();
+    const groupSelect = document.getElementById('student-group');
+    const nameSelect = document.getElementById('student-name-select');
+    const nameInput = document.getElementById('student-name-input');
+    const noNameCheckbox = document.getElementById('no-name-in-list');
     const pin = document.getElementById('student-pin').value.trim();
-    if (!name) return alert('Будь ласка, введіть прізвище та ім\'я');
+
+    let name = '';
+    let group = '';
+
+    if (noNameCheckbox.checked) {
+        name = nameInput.value.trim();
+        group = 'Інша';
+    } else {
+        name = nameSelect.value;
+        group = groupSelect.value;
+    }
+
+    if (!name) return alert('Будь ласка, вкажіть прізвище та ім\'я');
     if (!pin) return alert('Будь ласка, введіть PIN-код або Групу!');
     
     // Enter fullscreen
@@ -57,24 +73,84 @@ document.getElementById('join-btn').onclick = (e) => {
     
     // Disable button to prevent double clicks
     e.target.disabled = true;
+    const oldText = e.target.innerText;
     e.target.innerText = 'Приєднуємо...';
     
     // Save to local storage for persistence
     localStorage.setItem('studentName', name);
+    localStorage.setItem('studentGroup', group);
     localStorage.setItem('studentPin', pin);
     
-    socket.emit('student_join', { name, pin, token: getStudentToken() });
+    socket.emit('student_join', { name, group, pin, token: getStudentToken() });
 };
 
-// Auto-populate
-window.addEventListener('load', () => {
-    const savedName = localStorage.getItem('studentName');
-    const savedPin = localStorage.getItem('studentPin');
-    if (savedName) {
-        document.getElementById('student-name').value = savedName.replace(/ \(Спроба \d+\)$/, '');
-    }
-    if (savedPin) {
-        document.getElementById('student-pin').value = savedPin;
+// Auto-populate and Group fetch
+window.addEventListener('load', async () => {
+    const groupSelect = document.getElementById('student-group');
+    const nameSelect = document.getElementById('student-name-select');
+    const nameInput = document.getElementById('student-name-input');
+    const noNameCheckbox = document.getElementById('no-name-in-list');
+    const nameContainer = document.getElementById('name-selection-container');
+    const manualContainer = document.getElementById('manual-name-container');
+
+    // Toggle manual entry
+    noNameCheckbox.onchange = () => {
+        if (noNameCheckbox.checked) {
+            nameContainer.classList.add('hidden');
+            manualContainer.classList.remove('hidden');
+        } else {
+            nameContainer.classList.remove('hidden');
+            manualContainer.classList.add('hidden');
+        }
+    };
+
+    // Load groups
+    try {
+        const res = await fetch('/api/groups');
+        studentGroups = await res.json();
+        
+        // Populate groups
+        groupSelect.innerHTML = '<option value="">-- Виберіть групу --</option>' + 
+            studentGroups.map(g => `<option value="${g.name}">${g.name}</option>`).join('') +
+            '<option value="Інша">Інша / Немає в списку</option>';
+
+        groupSelect.onchange = () => {
+            const selectedGroup = studentGroups.find(g => g.name === groupSelect.value);
+            if (selectedGroup) {
+                nameSelect.innerHTML = '<option value="">-- Виберіть Прізвище Ім\'я --</option>' + 
+                    selectedGroup.students.map(s => `<option value="${s}">${s}</option>`).join('');
+                noNameCheckbox.checked = false;
+                noNameCheckbox.onchange();
+            } else if (groupSelect.value === 'Інша') {
+                noNameCheckbox.checked = true;
+                noNameCheckbox.onchange();
+            } else {
+                nameSelect.innerHTML = '';
+            }
+        };
+
+        // Attempt restore from localStorage
+        const savedGroup = localStorage.getItem('studentGroup');
+        const savedName = localStorage.getItem('studentName');
+        const savedPin = localStorage.getItem('studentPin');
+
+        if (savedGroup) {
+            groupSelect.value = savedGroup;
+            groupSelect.onchange();
+            if (savedName && !savedGroup.includes('Інша')) {
+                nameSelect.value = savedName;
+            } else if (savedName) {
+                nameInput.value = savedName;
+            }
+        }
+        if (savedPin) {
+            document.getElementById('student-pin').value = savedPin;
+        }
+    } catch (e) {
+        console.error('Failed to load groups:', e);
+        // Fallback to manual if API fails
+        noNameCheckbox.checked = true;
+        noNameCheckbox.onchange();
     }
 });
 

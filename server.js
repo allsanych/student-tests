@@ -128,6 +128,8 @@ const activeSessions = {}; // Maps PIN -> { id, pin, test, settings, path, stude
 const saveTimeouts = {}; // Maps PIN -> timeoutId for debounced saving
 
 const SESSIONS_FILE = path.join(__dirname, 'active_sessions.json');
+const groupsDir = path.join(__dirname, 'groups');
+if (!fs.existsSync(groupsDir)) fs.mkdirSync(groupsDir);
 
 function persistActiveSessions() {
     try {
@@ -239,6 +241,9 @@ io.on('connection', (socket) => {
             return socket.emit('join_error', 'Будь ласка, введіть PIN-код.');
         }
 
+        const group = data.group || 'Інша';
+        const name = data.name;
+
         // Case-insensitive lookup
         let activeSessionObj = activeSessions[pin];
         if (!activeSessionObj) {
@@ -252,9 +257,9 @@ io.on('connection', (socket) => {
 
         if (!activeSessionObj) {
             const activePins = Object.keys(activeSessions).join(', ');
-            console.warn(`[JOIN] Failed: Student ${data.name} sent PIN "${pin}". Active PINs: ${activePins}`);
+            console.warn(`[JOIN] Failed: Student ${name} sent PIN "${pin}". Active PINs: ${activePins}`);
             try {
-                fs.appendFileSync('server.log', `${new Date().toISOString()} - JOIN FAILED: Student ${data.name} sent PIN "${pin}". Active: ${activePins}\n`);
+                fs.appendFileSync('server.log', `${new Date().toISOString()} - JOIN FAILED: Student ${name} sent PIN "${pin}". Active: ${activePins}\n`);
             } catch(e) {}
             return socket.emit('join_error', 'Невірний PIN-код або тест не знайдено!');
         }
@@ -283,12 +288,12 @@ io.on('connection', (socket) => {
             });
           }
           if (activeSessionObj.settings.pickCount && activeSessionObj.settings.pickCount < studentQuestions.length) {
-              studentQuestions = studentQuestions.slice(0, session.settings.pickCount);
+              studentQuestions = studentQuestions.slice(0, activeSessionObj.settings.pickCount);
           }
         }
 
         // Check if student with this name already exists in this session
-        let student = activeSessionObj.students.find(s => s && s.name === data.name);
+        let student = activeSessionObj.students.find(s => s && s.name === name);
         
         if (student) {
             // Re-joining existing student: update socket ID and questions
@@ -296,12 +301,14 @@ io.on('connection', (socket) => {
             student.status = 'online';
             if (!student.startTime) student.startTime = Date.now();
             student.questions = studentQuestions; // Refresh questions on join
+            student.group = group; // Update group
         } else {
             // New student
             student = { 
               id: socket.id, 
               token: data.token,
-              name: data.name, 
+              name: name, 
+              group: group,
               answers: {}, 
               violations: [], 
               score: 0, 
@@ -319,7 +326,9 @@ io.on('connection', (socket) => {
         io.to('teacher_room').emit('student_update', { pin: pin, students: activeSessionObj.students });
         socket.emit('start_test', { ...activeTest, questions: student.questions, settings: activeSessionObj.settings });
 
-        fs.appendFileSync('server.log', `${new Date().toISOString()} - Student ${data.name} joined session ${pin}\n`);
+        try {
+            fs.appendFileSync('server.log', `${new Date().toISOString()} - Student ${name} (${group}) joined session ${pin}\n`);
+        } catch (e) {}
 
     } catch (e) {
         const errLog = `${new Date().toISOString()} - CRITICAL Error in student_join: ${e.stack || e}\n`;
@@ -545,18 +554,21 @@ function autoSaveSession(pin) {
       
       session.students.forEach(s => {
           if (!s.token) return;
-          if (!db[s.token]) db[s.token] = { name: s.name, history: [] };
+          if (!db[s.token]) db[s.token] = { name: s.name, group: s.group || 'Інша', history: [] };
           db[s.token].name = s.name;
+          db[s.token].group = s.group || 'Інша';
           const testTitle = session.test.title || 'test';
           const existingRun = db[s.token].history.find(h => h.testSessionId === session.id);
           if (existingRun) {
               existingRun.score = s.score;
+              existingRun.grade12 = s.grade12;
               existingRun.date = new Date().toISOString();
           } else {
               db[s.token].history.push({
                   testTitle: testTitle,
                   testSessionId: session.id,
                   score: s.score,
+                  grade12: s.grade12,
                   date: new Date().toISOString()
               });
           }
@@ -597,6 +609,47 @@ app.post('/api/tests/folder', (req, res) => {
             fs.mkdirSync(targetDir, { recursive: true });
         }
         res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// API for Groups Management
+app.get('/api/groups', (req, res) => {
+    try {
+        if (!fs.existsSync(groupsDir)) return res.json([]);
+        const files = fs.readdirSync(groupsDir).filter(f => f.endsWith('.json'));
+        const groups = files.map(f => {
+            const content = JSON.parse(fs.readFileSync(path.join(groupsDir, f), 'utf8'));
+            return { name: f.replace('.json', ''), students: content };
+        });
+        res.json(groups);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/groups', (req, res) => {
+    try {
+        const { name, students } = req.body;
+        if (!name || !Array.isArray(students)) return res.status(400).json({ error: 'Invalid data' });
+        const filePath = path.join(groupsDir, `${name}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(students, null, 2));
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/groups/:name', (req, res) => {
+    try {
+        const filePath = path.join(groupsDir, `${req.params.name}.json`);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Group not found' });
+        }
     } catch (e) {
         res.status(500).json({ error: e.message });
     }

@@ -24,7 +24,7 @@ let currentViewedArchive = null;
 let allArchiveFiles = [];
 
 // DOM Elements
-let testList, breadcrumbs, listSection, createSection, activeSection, archiveSection, resultsList, builder;
+let testList, breadcrumbs, listSection, createSection, activeSection, archiveSection, resultsList, builder, groupsSection, groupsList;
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Dashboard Initializing...');
@@ -38,6 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
     archiveSection = document.getElementById('results-archive-section');
     resultsList = document.getElementById('results-list');
     builder = document.getElementById('questions-builder');
+    groupsSection = document.getElementById('groups-management-section');
+    groupsList = document.getElementById('groups-list');
 
     // Socket Initialization
     socket = io();
@@ -430,6 +432,20 @@ function attachListeners() {
             refreshTests();
         });
     }
+
+    // Group Management Listeners
+    btn('show-groups-btn', () => {
+        listSection.classList.add('hidden');
+        groupsSection.classList.remove('hidden');
+        refreshGroups();
+    });
+    btn('back-from-groups-btn', () => {
+        groupsSection.classList.add('hidden');
+        listSection.classList.remove('hidden');
+    });
+    btn('save-group-btn', async () => {
+        await saveGroup();
+    });
 }
 
 function renderBuilder() {
@@ -744,3 +760,76 @@ function updateAnalyticsChart(students, testQuestions) {
         });
     }
 }
+
+// --- Group Management Functions ---
+async function refreshGroups() {
+    try {
+        const res = await fetch('/api/groups');
+        const groups = await res.json();
+        renderGroups(groups);
+    } catch (e) {
+        console.error('Failed to refresh groups:', e);
+    }
+}
+
+function renderGroups(groups) {
+    if (!groupsList) return;
+    if (groups.length === 0) {
+        groupsList.innerHTML = '<p style="color: #666; font-style: italic;">Груп ще не створено.</p>';
+        return;
+    }
+    groupsList.innerHTML = groups.map(g => `
+        <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-left: 4px solid var(--accent);">
+            <div>
+                <strong>${g.name}</strong>
+                <div style="font-size: 0.8rem; color: #666;">Студентів: ${g.students.length}</div>
+            </div>
+            <div style="display: flex; gap: 5px;">
+                <button onclick="editGroup('${g.name}', ${JSON.stringify(g.students).replace(/"/g, '&quot;')})" style="background-color: var(--primary); padding: 5px 10px;">✏️</button>
+                <button onclick="deleteGroup('${g.name}')" style="background-color: var(--error); padding: 5px 10px;">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+window.editGroup = (name, students) => {
+    document.getElementById('group-name-input').value = name;
+    document.getElementById('group-students-input').value = students.join('\n');
+};
+
+async function saveGroup() {
+    const name = document.getElementById('group-name-input').value.trim();
+    const studentsRaw = document.getElementById('group-students-input').value.trim();
+    if (!name || !studentsRaw) {
+        alert('Будь ласка, вкажіть назву та список студентів.');
+        return;
+    }
+    const students = studentsRaw.split('\n').map(s => s.trim()).filter(s => s !== '');
+    
+    try {
+        const res = await fetch('/api/groups', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, students })
+        });
+        if (res.ok) {
+            document.getElementById('group-name-input').value = '';
+            document.getElementById('group-students-input').value = '';
+            refreshGroups();
+        } else {
+            alert('Помилка збереження групи.');
+        }
+    } catch (e) {
+        console.error('Save group error:', e);
+    }
+}
+
+window.deleteGroup = async (name) => {
+    if (!confirm(`Видалити групу ${name}?`)) return;
+    try {
+        const res = await fetch(`/api/groups/${name}`, { method: 'DELETE' });
+        if (res.ok) refreshGroups();
+    } catch (e) {
+        console.error('Delete group error:', e);
+    }
+};

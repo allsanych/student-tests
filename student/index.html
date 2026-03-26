@@ -32,8 +32,23 @@
                 <img src="/media/logo.png" class="header-logo" alt="Logo">
                 <h1 style="margin-bottom: 0;">Вхід до тесту</h1>
             </div>
-            <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Введіть прізвище та ім'я</label>
-            <input type="text" id="student-name" placeholder="Напр. Іванов Іван">
+            <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Виберіть ваш навчальний заклад або групу</label>
+            <select id="student-group" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 8px; border: 1px solid #ddd;"></select>
+
+            <div id="name-selection-container">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Виберіть ваше прізвище та ім'я</label>
+                <select id="student-name-select" style="width: 100%; margin-bottom: 10px; padding: 12px; border-radius: 8px; border: 1px solid #ddd;"></select>
+            </div>
+
+            <div id="manual-name-container" class="hidden">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Введіть прізвище та ім'я (для нових)</label>
+                <input type="text" id="student-name-input" placeholder="Напр. Іванов Іван" style="width: 100%; margin-bottom: 10px;">
+            </div>
+
+            <label class="checkbox-container" style="margin-bottom: 20px; font-size: 0.85rem; color: #555;">
+                <input type="checkbox" id="no-name-in-list"> Мене немає в списку (ввести вручну)
+            </label>
+
             <label style="display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-light); font-size: 0.9rem;">Введіть PIN-код або Групу (ОБОВ'ЯЗКОВО)</label>
             <input type="text" id="student-pin" placeholder="PIN-код (напр. 7777)" maxlength="15">
             <button id="join-btn" style="width: 100%; height: 50px; font-size: 1.1rem;">Приєднатися (На весь екран)</button>

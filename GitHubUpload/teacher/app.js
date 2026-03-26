@@ -24,7 +24,7 @@ let currentViewedArchive = null;
 let allArchiveFiles = [];
 
 // DOM Elements
-let testList, breadcrumbs, listSection, createSection, activeSection, archiveSection, resultsList, builder;
+let testList, breadcrumbs, listSection, createSection, activeSection, archiveSection, resultsList, builder, groupsSection, groupsList;
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Dashboard Initializing...');
@@ -38,6 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
     archiveSection = document.getElementById('results-archive-section');
     resultsList = document.getElementById('results-list');
     builder = document.getElementById('questions-builder');
+    groupsSection = document.getElementById('groups-management-section');
+    groupsList = document.getElementById('groups-list');
 
     // Socket Initialization
     socket = io();
@@ -95,6 +97,14 @@ document.addEventListener('DOMContentLoaded', () => {
             updateAnalyticsChart(data.students, activeTest ? activeTest.questions : []);
         }
     });
+
+    socket.on('session_update', (data) => {
+        if (activeSession && data.pin === activeSession.pin) {
+            activeSession = data;
+            updateProgressGrid(activeSession.students, 'students-progress-grid');
+            updateAnalyticsChart(activeSession.students, activeSession.test ? activeSession.test.questions : []);
+        }
+    });
     
     // Initial Load
     refreshTests();
@@ -143,24 +153,55 @@ async function updateServerInfo() {
     } catch (e) {}
 }
 
-function updateProgressGrid(students) {
-    document.getElementById('student-count').innerText = students.length;
-    const grid = document.getElementById('students-progress-grid');
+function renderMath(element) {
+    if (window.renderMathInElement && element) {
+        renderMathInElement(element, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false},
+                {left: '\\[', right: '\\]', display: true}
+            ],
+            throwOnError: false
+        });
+    }
+}
+
+function updateProgressGrid(students, containerId = 'students-progress-grid') {
+    if (containerId === 'students-progress-grid') {
+        document.getElementById('student-count').innerText = students.length;
+    }
+    const grid = document.getElementById(containerId);
     if (!grid) return;
     grid.innerHTML = students.map(s => {
         let statusColor = s.status === 'offline' ? 'var(--error)' : 'var(--success)';
-        const testQCount = (activeTest && activeTest.questions) ? activeTest.questions.length : 0;
-        let progressHtml = '';
-        for (let i = 0; i < testQCount; i++) {
-            const res = s.results[activeTest.questions[i].id];
-            let color = res ? (res.isCorrect ? 'var(--success)' : 'var(--error)') : '#eee';
-            progressHtml += `<div style="width:15px;height:15px;background:${color};border-radius:3px;"></div>`;
+        const questionsToUse = s.questions || (activeTest ? activeTest.questions : []) || [];
+        const totalPossible = (questionsToUse && questionsToUse.length > 0) ? 
+            questionsToUse.reduce((sum, q) => sum + (q.score || 1), 0) : 1;
+        
+        let grade12 = 0;
+        if (totalPossible > 0) {
+            grade12 = Math.round(((s.score || 0) / totalPossible) * 12);
         }
+
+        let progressHtml = '';
+        if (questionsToUse) {
+            questionsToUse.forEach(q => {
+                const res = s.results[q.id];
+                let color = res ? (res.isCorrect ? 'var(--success)' : 'var(--error)') : 'var(--skipped)';
+                progressHtml += `<div title="${q.text.substring(0, 50)}..." style="width:15px;height:15px;background:${color};border-radius:3px;cursor:help;"></div>`;
+            });
+        }
+
         return `<div class="card" style="display:flex;justify-content:space-between;border-left:5px solid ${statusColor};">
-            <div><strong>${s.name}</strong><div style="display:flex;gap:3px;margin-top:5px;">${progressHtml}</div></div>
-            <div style="text-align:right;"><strong>${s.score}</strong></div>
+            <div><strong>${s.name}</strong><div style="display:flex;gap:3px;margin-top:5px;flex-wrap:wrap;">${progressHtml}</div></div>
+            <div style="text-align:right;">
+                <div style="font-size:1.2rem;font-weight:bold;color:var(--primary);">${grade12 || 0} б.</div>
+                <div style="font-size:0.8rem;color:#666;">${s.score || 0} / ${totalPossible}</div>
+            </div>
         </div>`;
     }).join('');
+    renderMath(grid);
 }
 
 async function refreshTests() {
@@ -169,13 +210,17 @@ async function refreshTests() {
         const data = await res.json();
         tests = Array.isArray(data.tests) ? data.tests : [];
         
-        if (data.lastModified) {
-            const date = new Date(data.lastModified);
+        if (data.lastModified || data.serverTime) {
+            const date = new Date(data.lastModified || data.serverTime);
             const timeStr = date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             const dateStr = date.toLocaleDateString('uk-UA');
+            
+            const serverDate = new Date(data.serverTime);
+            const serverTimeStr = serverDate.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+
             const lastUpdatedEl = document.getElementById('last-updated');
             if (lastUpdatedEl) {
-                lastUpdatedEl.innerText = `Остання зміна: ${dateStr} ${timeStr}`;
+                lastUpdatedEl.innerHTML = `Остання зміна: ${dateStr} ${timeStr} <br><small style="opacity:0.7">Час сервера: ${serverTimeStr}</small>`;
             }
         }
         renderTestList();
@@ -188,6 +233,14 @@ window.navigateTo = (path) => { currentPath = path; renderTestList(); };
 
 function renderTestList() {
     if (!testList || !breadcrumbs) return;
+    
+    // Safety check: if currentPath is not empty and no items exist in it, check if the folder still exists at all
+    const folderExists = currentPath === '' || tests.some(t => t.path === currentPath || t.path.startsWith(currentPath + '/'));
+    if (!folderExists) {
+        console.warn(`Path ${currentPath} no longer exists. Returning to root.`);
+        currentPath = '';
+    }
+
     breadcrumbs.innerHTML = `<span onclick="navigateTo('')" style="cursor:pointer">root</span> / ${currentPath}`;
     const items = tests.filter(t => {
         const dir = t.path.includes('/') ? t.path.substring(0, t.path.lastIndexOf('/')) : '';
@@ -205,6 +258,7 @@ function renderTestList() {
             </div>` : ''}
         </div>
     `).join('');
+    renderMath(testList);
 }
 
 window.goHome = () => {
@@ -283,7 +337,7 @@ function attachListeners() {
     // Test execution settings
     btn('start-with-settings-btn', () => {
         const settings = { 
-            pin: (document.getElementById('test-pin').value || '').trim() || null,
+            pin: (document.getElementById('test-pin').value || "").trim() || null,
             pickCount: parseInt(document.getElementById('test-pick-count').value) || null,
             timerType: document.getElementById('timer-type').value,
             timerValue: parseInt(document.getElementById('timer-value').value) || 60,
@@ -307,6 +361,11 @@ function attachListeners() {
         if (activeTestPin) {
             window.location.href = `/api/export-results?pin=${activeTestPin}`;
         } else if (currentViewedArchive) {
+            window.location.href = `/api/export-results?filename=${currentViewedArchive}`;
+        }
+    });
+    btn('archive-export-btn', () => {
+        if (currentViewedArchive) {
             window.location.href = `/api/export-results?filename=${currentViewedArchive}`;
         }
     });
@@ -373,17 +432,159 @@ function attachListeners() {
             refreshTests();
         });
     }
+
+    // Group Management Listeners
+    btn('show-groups-btn', () => {
+        listSection.classList.add('hidden');
+        groupsSection.classList.remove('hidden');
+        refreshGroups();
+    });
+    btn('back-from-groups-btn', () => {
+        groupsSection.classList.add('hidden');
+        listSection.classList.remove('hidden');
+    });
+    btn('save-group-btn', async () => {
+        await saveGroup();
+    });
 }
 
 function renderBuilder() {
     if (!builder) return;
-    builder.innerHTML = questions.map((q, i) => `
-        <div class="card">
-            <input type="text" value="${q.text}" onchange="questions[${i}].text=this.value" placeholder="Питання...">
-            <div><button onclick="questions.splice(${i},1);renderBuilder()" style="background:var(--error);">Видалити</button></div>
+    builder.innerHTML = questions.map((q, i) => {
+        let optionsHtml = '';
+        if (q.type === 'single' || q.type === 'multiple') {
+            optionsHtml = `
+                <div style="margin-top: 10px;">
+                    <strong>Варіанти (позначте правильні):</strong>
+                    <div id="options-${i}">
+                        ${(q.options || []).map((opt, optIdx) => {
+                            const isChecked = Array.isArray(q.answer) ? q.answer.includes(opt) : q.answer === opt;
+                            return `
+                            <div style="display:flex; gap:5px; margin-bottom:5px;">
+                                <input type="${q.type === 'single' ? 'radio' : 'checkbox'}" name="correct-${i}" ${isChecked ? 'checked' : ''} onchange="updateCorrectAnswer(${i}, ${optIdx})">
+                                <input type="text" value="${opt}" onchange="questions[${i}].options[${optIdx}]=this.value; renderBuilder()" style="flex:1;">
+                                <button onclick="questions[${i}].options.splice(${optIdx},1); renderBuilder()" style="background:var(--error); padding: 5px;">X</button>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                    <button onclick="questions[${i}].options.push(''); renderBuilder()" class="secondary" style="font-size:0.8rem; padding: 5px 10px;">+ Додати варіант</button>
+                </div>
+            `;
+        } else if (q.type === 'matching') {
+            optionsHtml = `
+                <div style="margin-top: 10px;">
+                    <strong>Пари для відповідності:</strong>
+                    <div id="pairs-${i}">
+                        ${(q.pairs || []).map((p, pIdx) => `
+                            <div style="display:flex; gap:5px; margin-bottom:5px;">
+                                <input type="text" value="${p.left}" placeholder="Ліва частина" onchange="questions[${i}].pairs[${pIdx}].left=this.value; syncMatchingAnswer(${i})" style="flex:1;">
+                                <span>➔</span>
+                                <input type="text" value="${p.right}" placeholder="Права частина" onchange="questions[${i}].pairs[${pIdx}].right=this.value; syncMatchingAnswer(${i})" style="flex:1;">
+                                <button onclick="questions[${i}].pairs.splice(${pIdx},1); syncMatchingAnswer(${i}); renderBuilder()" style="background:var(--error); padding: 5px;">X</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button onclick="if(!questions[${i}].pairs)questions[${i}].pairs=[]; questions[${i}].pairs.push({left:'',right:''}); syncMatchingAnswer(${i}); renderBuilder()" class="secondary" style="font-size:0.8rem; padding: 5px 10px;">+ Додати пару</button>
+                </div>
+            `;
+        } else if (q.type === 'text') {
+            optionsHtml = `
+                <div style="margin-top: 10px;">
+                    <strong>Правильна відповідь:</strong>
+                    <input type="text" value="${q.answer}" onchange="questions[${i}].answer=this.value" style="width:100%;">
+                </div>
+            `;
+        } else if (q.type === 'true_false') {
+            optionsHtml = `
+                <div style="margin-top: 10px;">
+                    <strong>Правильна відповідь:</strong>
+                    <select onchange="questions[${i}].answer=this.value" style="width:100%;">
+                        <option value="правда" ${q.answer === 'правда' ? 'selected' : ''}>Правда (Так)</option>
+                        <option value="неправда" ${q.answer === 'неправда' ? 'selected' : ''}>Неправда (Ні)</option>
+                    </select>
+                </div>
+            `;
+        }
+
+        return `
+        <div class="card" style="border-left: 5px solid var(--primary); position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                <div style="flex: 1; margin-right: 10px;">
+                    <label style="font-size: 0.8rem; font-weight: bold; color: #666;">Тип питання:</label>
+                    <select onchange="changeQuestionType(${i}, this.value)" style="width: 100%; margin-bottom: 5px;">
+                        <option value="single" ${q.type === 'single' ? 'selected' : ''}>Одинарний вибір</option>
+                        <option value="multiple" ${q.type === 'multiple' ? 'selected' : ''}>Множинний вибір</option>
+                        <option value="true_false" ${q.type === 'true_false' ? 'selected' : ''}>Правда/Неправда</option>
+                        <option value="text" ${q.type === 'text' ? 'selected' : ''}>Введення тексту</option>
+                        <option value="matching" ${q.type === 'matching' ? 'selected' : ''}>Відповідність</option>
+                    </select>
+                </div>
+                <div style="width: 80px;">
+                    <label style="font-size: 0.8rem; font-weight: bold; color: #666;">Бали:</label>
+                    <input type="number" step="0.5" value="${q.score || 1}" onchange="questions[${i}].score=parseFloat(this.value)" style="width: 100%; margin-bottom: 5px;">
+                </div>
+                <div style="width: 80px;">
+                    <label style="font-size: 0.8rem; font-weight: bold; color: #666;">Час (сек):</label>
+                    <input type="number" value="${q.time || 0}" placeholder="0=авто" onchange="questions[${i}].time=parseInt(this.value)" style="width: 100%; margin-bottom: 5px;">
+                </div>
+                <button onclick="questions.splice(${i},1);renderBuilder()" style="background:var(--error); margin-left: 10px;">✕</button>
+            </div>
+            
+            <textarea placeholder="Текст питання..." onchange="questions[${i}].text=this.value" style="width: 100%; min-height: 60px; font-size: 1.1rem; border: 1px solid #ddd; border-radius: 4px; padding: 8px;">${q.text}</textarea>
+            
+            <div style="margin-top: 10px;">
+                <label style="font-size: 0.8rem; font-weight: bold; color: #666;">Зображення (URL):</label>
+                <input type="text" value="${q.image || ''}" placeholder="/media/image.png" onchange="questions[${i}].image=this.value" style="width: 100%;">
+            </div>
+
+            ${optionsHtml}
         </div>
-    `).join('');
+        `;
+    }).join('');
+    renderMath(builder);
 }
+
+window.changeQuestionType = (idx, type) => {
+    const q = questions[idx];
+    q.type = type;
+    if (type === 'single' || type === 'multiple') {
+        if (!q.options) q.options = ['Варіант 1', 'Варіант 2'];
+        q.answer = type === 'single' ? q.options[0] : [q.options[0]];
+    } else if (type === 'true_false') {
+        q.answer = 'правда';
+        delete q.options;
+    } else if (type === 'matching') {
+        q.pairs = [{left: 'А', right: '1'}];
+        q.answer = {'А': '1'};
+        delete q.options;
+    } else if (type === 'text') {
+        q.answer = '';
+        delete q.options;
+    }
+    renderBuilder();
+};
+
+window.updateCorrectAnswer = (qIdx, optIdx) => {
+    const q = questions[qIdx];
+    const opt = q.options[optIdx];
+    if (q.type === 'single') {
+        q.answer = opt;
+    } else {
+        if (!Array.isArray(q.answer)) q.answer = [];
+        const index = q.answer.indexOf(opt);
+        if (index > -1) q.answer.splice(index, 1);
+        else q.answer.push(opt);
+    }
+};
+
+window.syncMatchingAnswer = (idx) => {
+    const q = questions[idx];
+    if (!q.pairs) return;
+    q.answer = {};
+    q.pairs.forEach(p => {
+        if (p.left) q.answer[p.left] = p.right;
+    });
+};
 
 function showActiveSession(data) {
     activeSection.classList.remove('hidden');
@@ -432,12 +633,14 @@ function renderResults() {
                     </div>
                 </div>
                 <div style="display:flex; gap:5px; flex-shrink: 0; margin-left: 10px;">
+                    <button onclick="restoreSession('${f.name}')" style="background:var(--success); padding: 8px 10px;" title="Відновити сесію (зробити активною)">🔄</button>
                     <button onclick="viewArchivedResult('${f.name}')" style="background:var(--primary); padding: 8px 15px;">👁️ Відкрити</button>
                     <button onclick="deleteResult('${f.name}')" style="background:var(--error); padding: 8px 15px;">X</button>
                 </div>
             </div>
         `;
     }).join('');
+    renderMath(list);
     
     if (filtered.length === 0) {
         list.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">Результатів не знайдено 🔍</p>';
@@ -450,30 +653,23 @@ window.viewArchivedResult = async (filename) => {
         if (!res.ok) throw new Error('Cannot load JSON');
         const sessionData = await res.json();
         
-        document.getElementById('results-archive-section').classList.add('hidden');
-        document.getElementById('stop-test-btn').classList.add('hidden');
-        
-        const closeBtn = document.getElementById('close-results-btn');
-        if (closeBtn) closeBtn.classList.remove('hidden');
-        
-        document.getElementById('active-test-name').innerText = (sessionData.test && sessionData.test.title) || filename;
-        
-        activeTest = sessionData.test || { questions: [] };
-        activeTestPin = null; 
         currentViewedArchive = filename;
+        document.getElementById('archive-test-name').innerText = (sessionData.test && sessionData.test.title) || filename;
         
-        activeSection.classList.remove('hidden');
+        // Use the modal-specific grid I added earlier
+        updateProgressGrid(sessionData.students, 'archive-progress-grid');
         
-        if (sessionData.students) {
-            updateProgressGrid(sessionData.students);
-            updateAnalyticsChart(sessionData.students, activeTest.questions);
-        } else {
-            updateProgressGrid([]);
-            updateAnalyticsChart([], activeTest.questions);
-        }
+        document.getElementById('archive-modal').style.display = 'block';
     } catch(e) {
         alert('Помилка завантаження файлу: ' + e.message);
     }
+};
+
+window.restoreSession = async (filename) => {
+    if (!confirm('Ви дійсно хочете відновити цю сесію? Це зробить ПІН-код знову активним для входу студентів.')) return;
+    socket.emit('teacher_restore_session', filename);
+    alert('Запит на відновлення надіслано. Перевірте список активних тестів.');
+    goHome();
 };
 
 window.closeArchivedResult = () => {
@@ -495,7 +691,31 @@ window.deleteResult = async (path) => {
         refreshResults(); 
     }
 };
-window.openAiGenerator = () => alert('В розробці');
+window.openAiGenerator = () => {
+    const topic = prompt('Введіть тему для генерації тесту (напр: "Будова атома", "Закони Ньютона"):');
+    if (!topic) return;
+    
+    const count = prompt('Кількість питань:', '10');
+    if (!count) return;
+
+    alert('Генерація розпочата. Якщо ви працюєте в режимі ШІ-асистента, я отримаю ваш запит і згенерую питання прямо в файл тесту. Будь ласка, зачекайте...');
+    
+    fetch('/api/ai-generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ topic, count: parseInt(count), currentPath: currentPath })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert('Запит на генерацію надіслано. Оновіть список тестів через кілька секунд.');
+            refreshTests();
+        } else {
+            alert('Помилка: ' + (data.error || 'Невідома помилка'));
+        }
+    })
+    .catch(err => alert('Помилка мережі: ' + err.message));
+};
 
 function updateAnalyticsChart(students, testQuestions) {
     if (!testQuestions || testQuestions.length === 0) return;
@@ -540,3 +760,76 @@ function updateAnalyticsChart(students, testQuestions) {
         });
     }
 }
+
+// --- Group Management Functions ---
+async function refreshGroups() {
+    try {
+        const res = await fetch('/api/groups');
+        const groups = await res.json();
+        renderGroups(groups);
+    } catch (e) {
+        console.error('Failed to refresh groups:', e);
+    }
+}
+
+function renderGroups(groups) {
+    if (!groupsList) return;
+    if (groups.length === 0) {
+        groupsList.innerHTML = '<p style="color: #666; font-style: italic;">Груп ще не створено.</p>';
+        return;
+    }
+    groupsList.innerHTML = groups.map(g => `
+        <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border-left: 4px solid var(--accent);">
+            <div>
+                <strong>${g.name}</strong>
+                <div style="font-size: 0.8rem; color: #666;">Студентів: ${g.students.length}</div>
+            </div>
+            <div style="display: flex; gap: 5px;">
+                <button onclick="editGroup('${g.name}', ${JSON.stringify(g.students).replace(/"/g, '&quot;')})" style="background-color: var(--primary); padding: 5px 10px;">✏️</button>
+                <button onclick="deleteGroup('${g.name}')" style="background-color: var(--error); padding: 5px 10px;">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+window.editGroup = (name, students) => {
+    document.getElementById('group-name-input').value = name;
+    document.getElementById('group-students-input').value = students.join('\n');
+};
+
+async function saveGroup() {
+    const name = document.getElementById('group-name-input').value.trim();
+    const studentsRaw = document.getElementById('group-students-input').value.trim();
+    if (!name || !studentsRaw) {
+        alert('Будь ласка, вкажіть назву та список студентів.');
+        return;
+    }
+    const students = studentsRaw.split('\n').map(s => s.trim()).filter(s => s !== '');
+    
+    try {
+        const res = await fetch('/api/groups', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, students })
+        });
+        if (res.ok) {
+            document.getElementById('group-name-input').value = '';
+            document.getElementById('group-students-input').value = '';
+            refreshGroups();
+        } else {
+            alert('Помилка збереження групи.');
+        }
+    } catch (e) {
+        console.error('Save group error:', e);
+    }
+}
+
+window.deleteGroup = async (name) => {
+    if (!confirm(`Видалити групу ${name}?`)) return;
+    try {
+        const res = await fetch(`/api/groups/${name}`, { method: 'DELETE' });
+        if (res.ok) refreshGroups();
+    } catch (e) {
+        console.error('Delete group error:', e);
+    }
+};

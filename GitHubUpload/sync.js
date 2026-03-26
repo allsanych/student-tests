@@ -14,13 +14,16 @@ module.exports = function setupSync(serverHostIo, onSyncUpdate) {
     const SYNC_MASTER_URL = process.env.SYNC_MASTER_URL;
     const TESTS_DIR = path.join(__dirname, 'tests');
     const RESULTS_DIR = path.join(__dirname, 'results');
+    const GROUPS_DIR = path.join(__dirname, 'groups');
 
     if (!fs.existsSync(TESTS_DIR)) fs.mkdirSync(TESTS_DIR, { recursive: true });
     if (!fs.existsSync(RESULTS_DIR)) fs.mkdirSync(RESULTS_DIR, { recursive: true });
+    if (!fs.existsSync(GROUPS_DIR)) fs.mkdirSync(GROUPS_DIR, { recursive: true });
 
     function getRelativePath(absolutePath) {
         if (absolutePath.startsWith(TESTS_DIR)) return 'tests/' + path.relative(TESTS_DIR, absolutePath).replace(/\\/g, '/');
         if (absolutePath.startsWith(RESULTS_DIR)) return 'results/' + path.relative(RESULTS_DIR, absolutePath).replace(/\\/g, '/');
+        if (absolutePath.startsWith(GROUPS_DIR)) return 'groups/' + path.relative(GROUPS_DIR, absolutePath).replace(/\\/g, '/');
         if (absolutePath.endsWith('active_sessions.json')) return 'active_sessions.json';
         return null;
     }
@@ -98,7 +101,7 @@ module.exports = function setupSync(serverHostIo, onSyncUpdate) {
 
         client.on('connect', () => {
             logToFile(`[SYNC] Connected to Master! Pushing all local files...`);
-            const allFiles = [...getAllFiles(TESTS_DIR), ...getAllFiles(RESULTS_DIR)];
+            const allFiles = [...getAllFiles(TESTS_DIR), ...getAllFiles(RESULTS_DIR), ...getAllFiles(GROUPS_DIR)];
             allFiles.forEach(f => {
                 const relPath = getRelativePath(f);
                 if (relPath) {
@@ -115,7 +118,7 @@ module.exports = function setupSync(serverHostIo, onSyncUpdate) {
         client.on('disconnect', () => logToFile('[SYNC] Disconnected from Master'));
         client.on('connect_error', (err) => logToFile(`[SYNC] Connection error: ${err.message}`));
 
-        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'active_sessions.json', 'teacher', 'student', 'tests', 'results'], { 
+        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'active_sessions.json', 'teacher', 'student', 'tests', 'results', 'groups'], { 
             ignored: [/node_modules/, /\.git/],
             ignoreInitial: true, 
             persistent: true, 
@@ -140,7 +143,7 @@ module.exports = function setupSync(serverHostIo, onSyncUpdate) {
             syncNamespace.emit(event, payload);
         }
 
-        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'active_sessions.json', 'teacher', 'student', 'tests', 'results'], { ignored: [/node_modules/, /\.git/], ignoreInitial: true, persistent: true, awaitWriteFinish: { stabilityThreshold: 500 } });
+        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'active_sessions.json', 'teacher', 'student', 'tests', 'results', 'groups'], { ignored: [/node_modules/, /\.git/], ignoreInitial: true, persistent: true, awaitWriteFinish: { stabilityThreshold: 500 } });
         watcher.on('add', (p) => handleLocalUpdate(p, broadcast));
         watcher.on('change', (p) => handleLocalUpdate(p, broadcast));
         watcher.on('unlink', (p) => handleLocalDelete(p, broadcast));
