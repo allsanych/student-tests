@@ -139,8 +139,10 @@ function loadPersistentSessions() {
     try {
         if (fs.existsSync(SESSIONS_FILE)) {
             const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+            // Clear existing keys to ensure perfect sync
+            Object.keys(activeSessions).forEach(key => delete activeSessions[key]);
             Object.assign(activeSessions, data);
-            console.log(`[PERSISTENCE] Recovered ${Object.keys(activeSessions).length} sessions.`);
+            console.log(`[PERSISTENCE] Reloaded ${Object.keys(activeSessions).length} sessions.`);
         }
     } catch (e) {
         console.error('[PERSISTENCE] Error loading sessions:', e);
@@ -192,19 +194,31 @@ io.on('connection', (socket) => {
   socket.on('student_join', (data) => {
     try {
         if (!data) throw new Error('No data received in student_join');
-        const pin = data.pin;
+        const pin = data.pin ? String(data.pin).trim() : null;
         if (!pin) {
             return socket.emit('join_error', 'Будь ласка, введіть PIN-код.');
         }
 
-        if (!activeSessions[pin]) {
+        // Robust matching: Exact match or Case-insensitive match 
+        let activeSessionObj = activeSessions[pin];
+        if (!activeSessionObj) {
+            // Check for case-insensitive match
+            const pins = Object.keys(activeSessions);
+            const matchingPin = pins.find(p => p.toLowerCase() === pin.toLowerCase());
+            if (matchingPin) {
+                activeSessionObj = activeSessions[matchingPin];
+                console.log(`[JOIN-ROBUST] Found case-insensitive match: ${pin} -> ${matchingPin}`);
+            }
+        }
+
+        if (!activeSessionObj) {
+            console.log(`[JOIN-FAILED] PIN: "${pin}". Active: ${Object.keys(activeSessions).join(', ')}`);
             return socket.emit('join_error', 'Невірний PIN-код або тест не знайдено!');
         }
         
-        const session = activeSessions[pin];
-        if (!session.students) session.students = [];
+        if (!activeSessionObj.students) activeSessionObj.students = [];
         
-        const activeTest = session.test;
+        const activeTest = activeSessionObj.test;
         if (!activeTest || !Array.isArray(activeTest.questions)) {
             console.error(`ERROR: Test for session ${pin} has no questions!`, activeTest);
             return socket.emit('join_error', 'Помилка завантаження тесту: немає питань.');
@@ -213,11 +227,11 @@ io.on('connection', (socket) => {
         let studentQuestions = [...activeTest.questions];
         
         // Randomization Logic
-        if (session.settings) {
-          if (session.settings.shuffleQuestions || session.settings.pickCount) {
+        if (activeSessionObj.settings) {
+          if (activeSessionObj.settings.shuffleQuestions || activeSessionObj.settings.pickCount) {
             studentQuestions = shuffleArray(studentQuestions);
           }
-          if (session.settings.shuffleAnswers) {
+          if (activeSessionObj.settings.shuffleAnswers) {
             studentQuestions = studentQuestions.map(q => {
               if (q.options && Array.isArray(q.options)) {
                 return { ...q, options: shuffleArray(q.options) };
@@ -225,13 +239,13 @@ io.on('connection', (socket) => {
               return q;
             });
           }
-          if (session.settings.pickCount && session.settings.pickCount < studentQuestions.length) {
-              studentQuestions = studentQuestions.slice(0, session.settings.pickCount);
+          if (activeSessionObj.settings.pickCount && activeSessionObj.settings.pickCount < studentQuestions.length) {
+              studentQuestions = studentQuestions.slice(0, activeSessionObj.settings.pickCount);
           }
         }
 
         // Check if student with this name already exists in this session
-        let student = session.students.find(s => s && s.name === data.name);
+        let student = activeSessionObj.students.find(s => s && s.name === data.name);
         
         if (student) {
             // Re-joining existing student: update socket ID and questions
@@ -254,12 +268,12 @@ io.on('connection', (socket) => {
               startTime: Date.now(),
               endTime: null
             };
-            session.students.push(student);
+            activeSessionObj.students.push(student);
         }
         
         socket.join(`session_${pin}`);
-        io.to('teacher_room').emit('student_update', { pin: pin, students: session.students });
-        socket.emit('start_test', { ...activeTest, questions: student.questions, settings: session.settings });
+        io.to('teacher_room').emit('student_update', { pin: pin, students: activeSessionObj.students });
+        socket.emit('start_test', { ...activeTest, questions: student.questions, settings: activeSessionObj.settings });
 
         fs.appendFileSync('server.log', `${new Date().toISOString()} - Student ${data.name} joined session ${pin}\n`);
 
@@ -750,8 +764,20 @@ app.delete(/^\/api\/tests\/(.*)/, (req, res) => {
   }
 });
 
-// Initialize P2P Synchronization
-require('./sync')(io);
+// Initialize P2P Synchronization (with reload callback)
+require('./sync')(io, (filename) => {
+    if (filename === 'active_sessions.json') {
+        loadPersistentSessions();
+        // Broadcast to existing teacher rooms that sessions might have changed
+        const activeCount = Object.keys(activeSessions).length;
+        io.to('teacher_room').emit('sessions_list_update', Object.values(activeSessions).map(s => ({
+            pin: s.pin, 
+            title: (s.test && s.test.title) ? s.test.title : 'Без назви', 
+            studentCount: (s.students || []).length
+        })));
+        console.log(`[SYNC-RELOAD] Active sessions refreshed. Count: ${activeCount}`);
+    }
+});
 
 server.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server running on http://localhost:${PORT}`);

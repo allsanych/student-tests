@@ -3,7 +3,7 @@ const path = require('path');
 const chokidar = require('chokidar');
 const { io: ioClient } = require('socket.io-client');
 
-module.exports = function setupSync(serverHostIo) {
+module.exports = function setupSync(serverHostIo, onSyncUpdate) {
     const SYNC_SECRET = process.env.SYNC_SECRET || 'sync_secret_1234';
     const SYNC_MASTER_URL = process.env.SYNC_MASTER_URL;
     const TESTS_DIR = path.join(__dirname, 'tests');
@@ -15,6 +15,7 @@ module.exports = function setupSync(serverHostIo) {
     function getRelativePath(absolutePath) {
         if (absolutePath.startsWith(TESTS_DIR)) return 'tests/' + path.relative(TESTS_DIR, absolutePath).replace(/\\/g, '/');
         if (absolutePath.startsWith(RESULTS_DIR)) return 'results/' + path.relative(RESULTS_DIR, absolutePath).replace(/\\/g, '/');
+        if (absolutePath.endsWith('active_sessions.json')) return 'active_sessions.json';
         return null;
     }
 
@@ -44,6 +45,11 @@ module.exports = function setupSync(serverHostIo) {
         
         fs.writeFileSync(fullPath, data.content, 'utf8');
         console.log(`[SYNC] Updated file from remote: ${data.path}`);
+
+        if (onSyncUpdate && data.path === 'active_sessions.json') {
+            console.log('[SYNC] Triggering reload for active sessions...');
+            onSyncUpdate(data.path);
+        }
     }
 
     function applyRemoteDelete(data) {
@@ -102,7 +108,7 @@ module.exports = function setupSync(serverHostIo) {
         client.on('file_delete', applyRemoteDelete);
         client.on('disconnect', () => console.log('[SYNC] Disconnected from Master'));
 
-        const watcher = chokidar.watch([TESTS_DIR, RESULTS_DIR], { 
+        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'active_sessions.json', 'teacher', 'student', 'tests', 'results'], { 
             ignoreInitial: true, 
             persistent: true, 
             usePolling: true,
@@ -126,7 +132,7 @@ module.exports = function setupSync(serverHostIo) {
             syncNamespace.emit(event, payload);
         }
 
-        const watcher = chokidar.watch([TESTS_DIR, RESULTS_DIR], { ignoreInitial: true, persistent: true, awaitWriteFinish: { stabilityThreshold: 500 } });
+        const watcher = chokidar.watch(['server.js', 'sync.js', 'shared.css', 'active_sessions.json', 'teacher', 'student', 'tests', 'results'], { ignoreInitial: true, persistent: true, awaitWriteFinish: { stabilityThreshold: 500 } });
         watcher.on('add', (p) => handleLocalUpdate(p, broadcast));
         watcher.on('change', (p) => handleLocalUpdate(p, broadcast));
         watcher.on('unlink', (p) => handleLocalDelete(p, broadcast));

@@ -283,7 +283,7 @@ function attachListeners() {
     // Test execution settings
     btn('start-with-settings-btn', () => {
         const settings = { 
-            pin: document.getElementById('test-pin').value || null,
+            pin: (document.getElementById('test-pin').value || '').trim() || null,
             pickCount: parseInt(document.getElementById('test-pick-count').value) || null,
             timerType: document.getElementById('timer-type').value,
             timerValue: parseInt(document.getElementById('timer-value').value) || 60,
