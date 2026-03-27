@@ -41,6 +41,16 @@ function renderMath(element) {
     }
 }
 
+function formatImageUrl(url) {
+    if (!url) return '';
+    // Handle Google Drive view links
+    const gdMatch = url.match(/drive\.google\.com\/file\/d\/([^\/\?]+)/);
+    if (gdMatch && gdMatch[1]) {
+        return `https://drive.google.com/uc?export=view&id=${gdMatch[1]}`;
+    }
+    return url;
+}
+
 document.getElementById('join-btn').onclick = (e) => {
     const groupSelect = document.getElementById('student-group');
     const nameSelect = document.getElementById('student-name-select');
@@ -461,7 +471,7 @@ function renderQuestion() {
 
         qContainer.innerHTML = `
             <div class="card question-card">
-                ${q.image ? `<img src="${q.image}" style="max-width: 100%; max-height: 300px; display: block; margin: 0 auto 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">` : ''}
+                ${q.image ? `<img src="${formatImageUrl(q.image)}" style="max-width: 100%; max-height: 300px; display: block; margin: 0 auto 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">` : ''}
                 <div style="font-size: 1.3rem; margin-bottom: 2rem; line-height: 1.6; user-select: none;" onclick="event.stopPropagation()">${q.text}</div>
                 <div id="inputs-container">${inputHtml}</div>
                 <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
