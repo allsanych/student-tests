@@ -24,7 +24,7 @@ let currentViewedArchive = null;
 let allArchiveFiles = [];
 
 // DOM Elements
-let testList, breadcrumbs, listSection, createSection, activeSection, archiveSection, resultsList, builder, groupsSection, groupsList;
+let testList, breadcrumbs, listSection, createSection, activeSection, archiveSection, resultsList, builder, groupsSection, groupsList, mediaSection, mediaList;
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Dashboard Initializing...');
@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', () => {
     builder = document.getElementById('questions-builder');
     groupsSection = document.getElementById('groups-management-section');
     groupsList = document.getElementById('groups-list');
+    mediaSection = document.getElementById('media-management-section');
+    mediaList = document.getElementById('media-list');
 
     // Socket Initialization
     socket = io();
@@ -276,6 +278,8 @@ window.goHome = () => {
     createSection.classList.add('hidden');
     activeSection.classList.add('hidden');
     archiveSection.classList.add('hidden');
+    groupsSection.classList.add('hidden');
+    mediaSection.classList.add('hidden');
     document.getElementById('sessions-list-section').classList.remove('hidden');
     listSection.classList.remove('hidden');
     
@@ -455,6 +459,27 @@ function attachListeners() {
     btn('save-group-btn', async () => {
         await saveGroup();
     });
+
+    // Media Management Listeners
+    btn('show-media-btn', () => {
+        listSection.classList.add('hidden');
+        mediaSection.classList.remove('hidden');
+        refreshMedia();
+    });
+    btn('back-from-media-btn', () => {
+        mediaSection.classList.add('hidden');
+        listSection.classList.remove('hidden');
+    });
+    
+    const mediaInput = document.getElementById('media-upload-input');
+    if (mediaInput) {
+        mediaInput.onchange = async (e) => {
+            if (e.target.files.length > 0) {
+                await uploadMedia(e.target.files[0]);
+                mediaInput.value = ''; // Reset
+            }
+        };
+    }
 }
 
 function renderBuilder() {
@@ -543,7 +568,15 @@ function renderBuilder() {
             
             <div style="margin-top: 10px;">
                 <label style="font-size: 0.8rem; font-weight: bold; color: #666;">Зображення (URL):</label>
-                <input type="text" value="${q.image || ''}" placeholder="/media/image.png" onchange="questions[${i}].image=this.value" style="width: 100%;">
+                <div style="display: flex; gap: 5px;">
+                    <input type="text" id="q-image-${i}" value="${q.image || ''}" placeholder="/media/image.png" onchange="questions[${i}].image=this.value" style="flex: 1; margin-bottom: 0;">
+                    <button onclick="toggleMediaPicker(${i})" class="secondary" style="padding: 5px 10px; font-size: 0.8rem;">📂 Вибрати</button>
+                </div>
+                <div id="media-picker-${i}" class="hidden" style="margin-top: 5px; background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #e2e8f0; max-height: 150px; overflow-y: auto;">
+                    <div id="media-picker-list-${i}" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 10px;">
+                        <!-- Content loaded via toggleMediaPicker -->
+                    </div>
+                </div>
             </div>
 
             ${optionsHtml}
@@ -841,4 +874,117 @@ window.deleteGroup = async (name) => {
     } catch (e) {
         console.error('Delete group error:', e);
     }
+};
+
+// --- Media Management Functions ---
+async function refreshMedia() {
+    if (!mediaList) return;
+    try {
+        const res = await fetch('/api/media');
+        const files = await res.json();
+        renderMedia(files);
+    } catch (e) {
+        console.error('Failed to refresh media:', e);
+    }
+}
+
+function renderMedia(files) {
+    if (!mediaList) return;
+    if (files.length === 0) {
+        mediaList.innerHTML = '<p style="color: #666; font-style: italic; grid-column: 1/-1; text-align: center;">Файлів ще не завантажено.</p>';
+        return;
+    }
+    mediaList.innerHTML = files.map(f => `
+        <div class="card" style="padding: 10px; text-align: center; border: 1px solid #eee; margin-bottom: 0;">
+            <div style="height: 120px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; background: #fcfcfc; border-radius: 4px; overflow: hidden; border: 1px solid #f0f0f0;">
+                <img src="${f.url}" style="max-width: 100%; max-height: 100%; object-fit: contain; cursor: pointer;" onclick="window.open('${f.url}', '_blank')">
+            </div>
+            <div style="font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 8px; font-weight: bold;" title="${f.name}">${f.name}</div>
+            <div style="display: flex; gap: 5px;">
+                <button onclick="copyToClipboard('${f.url}')" style="flex: 1; padding: 5px; font-size: 0.8rem; background: var(--success); min-width: 40px;" title="Копіювати посилання">🔗 Копіювати</button>
+                <button onclick="deleteMedia('${f.name}')" style="padding: 5px; font-size: 0.8rem; background: var(--error); width: 40px;" title="Видалити">🗑️</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function uploadMedia(file) {
+    const status = document.getElementById('upload-status');
+    status.innerText = '⏳ Завантаження...';
+    status.style.color = 'var(--primary)';
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+        const res = await fetch('/api/media/upload', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await res.json();
+        if (result.success) {
+            status.innerText = '✅ Успішно завантажено!';
+            status.style.color = 'var(--success)';
+            refreshMedia();
+            setTimeout(() => { status.innerText = ''; }, 3000);
+        } else {
+            throw new Error(result.error || 'Upload failed');
+        }
+    } catch (e) {
+        status.innerText = '❌ Помилка: ' + e.message;
+        status.style.color = 'var(--error)';
+    }
+}
+
+window.deleteMedia = async (name) => {
+    if (confirm(`Видалити файл ${name}?`)) {
+        try {
+            await fetch(`/api/media/${name}`, { method: 'DELETE' });
+            refreshMedia();
+        } catch (e) { alert('Помилка видалення'); }
+    }
+};
+
+window.copyToClipboard = (text) => {
+    // Check if we have a full URL or relative
+    const fullUrl = text.startsWith('http') ? text : window.location.origin + text;
+    
+    navigator.clipboard.writeText(fullUrl).then(() => {
+        alert('Посилання скопійовано: ' + fullUrl);
+    }).catch(err => {
+        // Fallback
+        const el = document.createElement('textarea');
+        el.value = fullUrl;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        alert('Посилання скопійовано: ' + fullUrl);
+    });
+};
+
+window.toggleMediaPicker = async (idx) => {
+    const picker = document.getElementById(`media-picker-${idx}`);
+    const list = document.getElementById(`media-picker-list-${idx}`);
+    if (picker.classList.contains('hidden')) {
+        picker.classList.remove('hidden');
+        try {
+            const res = await fetch('/api/media');
+            const files = await res.json();
+            list.innerHTML = files.map(f => `
+                <div onclick="selectMediaForQuestion(${idx}, '${f.url}')" style="cursor: pointer; border: 1px solid #eee; border-radius: 4px; padding: 2px; text-align: center; background: white;" title="${f.name}">
+                    <img src="${f.url}" style="width: 100%; height: 40px; object-fit: contain;">
+                </div>
+            `).join('');
+            if (files.length === 0) list.innerHTML = '<p style="font-size: 0.7rem; color: #666; grid-column: 1/-1;">Пусто</p>';
+        } catch (e) { list.innerHTML = 'Error'; }
+    } else {
+        picker.classList.add('hidden');
+    }
+};
+
+window.selectMediaForQuestion = (idx, url) => {
+    questions[idx].image = url;
+    document.getElementById(`q-image-${idx}`).value = url;
+    document.getElementById(`media-picker-${idx}`).classList.add('hidden');
 };

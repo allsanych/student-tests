@@ -996,6 +996,64 @@ app.delete('/api/results/:name', (req, res) => {
   }
 });
 
+// --- MEDIA MANAGEMENT API ---
+app.get('/api/media', teacherAuth, (req, res) => {
+    try {
+        const mediaDir = path.join(__dirname, 'media');
+        if (!fs.existsSync(mediaDir)) return res.json([]);
+        const files = fs.readdirSync(mediaDir).filter(f => !f.startsWith('.'));
+        res.json(files.map(f => {
+            const stats = fs.statSync(path.join(mediaDir, f));
+            return {
+                name: f,
+                url: `/media/${f}`,
+                size: stats.size,
+                mtime: stats.mtime
+            };
+        }));
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/media/upload', teacherAuth, (req, res) => {
+    try {
+        if (!req.files || Object.keys(req.files).length === 0) {
+            return res.status(400).send('No files were uploaded.');
+        }
+
+        const mediaFile = req.files.file;
+        const mediaDir = path.join(__dirname, 'media');
+        if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
+
+        // Sanitize filename
+        const safeName = mediaFile.name.replace(/[^a-z0-9._-]/gi, '_');
+        const uploadPath = path.join(mediaDir, safeName);
+
+        mediaFile.mv(uploadPath, (err) => {
+            if (err) return res.status(500).send(err);
+            res.json({ success: true, url: `/media/${safeName}`, name: safeName });
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/media/:name', teacherAuth, (req, res) => {
+    try {
+        const fileName = req.params.name.replace(/\.\./g, ''); // Basic traversal protection
+        const filePath = path.join(__dirname, 'media', fileName);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            res.json({ success: true });
+        } else {
+            res.status(404).send('File not found');
+        }
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.delete(/^\/api\/tests\/(.*)/, (req, res) => {
   const testPath = req.params[0];
   const filePath = path.join(__dirname, 'tests', testPath);
