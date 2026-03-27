@@ -1,5 +1,5 @@
 {
-  "title": "Прилади з диференціально-трансформаторними перетворювачами",
+  "title": "Т1.Т5 Прилади з диференціально-трансформаторними перетворювачами",
   "questions": [
     {
       "id": 1,
@@ -55,7 +55,8 @@
       ],
       "answer": "Зустрічно",
       "score": 1,
-      "time": 30
+      "time": 30,
+      "image": "https://drive.google.com/file/d/1VjtzE8ODWtb-5IA3mIzGROsUlLuo17lK/view?usp=sharing"
     },
     {
       "id": 5,
@@ -186,7 +187,8 @@
       ],
       "answer": "На електронний підсилювач (ЕП)",
       "score": 1,
-      "time": 30
+      "time": 30,
+      "image": "https://drive.google.com/file/d/17833XB6atfLqOC4Bgc_2cp0AadLMo4bL/view?usp=sharing"
     },
     {
       "id": 13,
@@ -200,7 +202,8 @@
       ],
       "answer": "Регульований резистор $R_3$",
       "score": 1,
-      "time": 30
+      "time": 30,
+      "image": "https://drive.google.com/file/d/17833XB6atfLqOC4Bgc_2cp0AadLMo4bL/view?usp=sharing"
     },
     {
       "id": 14,
@@ -307,5 +310,5 @@
       "time": 45
     }
   ],
-  "folder": "Автоматизація/Прилади"
+  "folder": "КВПіА/3 розряд/Т1. Вимірювання тиску"
 }
