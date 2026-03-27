@@ -144,6 +144,7 @@ app.use(fileUpload());
 app.use('/shared.css', (req, res) => res.sendFile(path.join(__dirname, 'shared.css')));
 
 app.get('/', (req, res) => res.redirect('/teacher'));
+app.get('/teacher/dashboard', (req, res) => res.redirect('/teacher'));
 
 // Protect teacher routes
 app.use('/teacher', teacherAuth, express.static(path.join(__dirname, 'teacher')));
