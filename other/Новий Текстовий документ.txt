@@ -1,0 +1,8 @@
+allsanych_db_user
+
+
+3SeK4ZSUgG1BWCez
+
+3SeK4ZSUgG1BWCez
+
+mongodb+srv://allsanych_db_user:3SeK4ZSUgG1BWCez@cluster0.ns7urhq.mongodb.net/?appName=Cluster0

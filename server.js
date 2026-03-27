@@ -7,6 +7,38 @@ const fileUpload = require('express-fileupload');
 const qrcode = require('qrcode');
 const os = require('os');
 const { spawn } = require('child_process');
+const mongoose = require('mongoose');
+
+// MongoDB Setup
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://allsanych_db_user:3SeK4ZSUgG1BWCez@ac-sdqnr0a-shard-00-00.ns7urhq.mongodb.net:27017,ac-sdqnr0a-shard-00-01.ns7urhq.mongodb.net:27017,ac-sdqnr0a-shard-00-02.ns7urhq.mongodb.net:27017/test_platform?ssl=true&authSource=admin&retryWrites=true&w=majority';
+
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('[DB] Connected to MongoDB Atlas'))
+  .catch(err => console.error('[DB] Connection error:', err));
+
+const sessionSchema = new mongoose.Schema({
+    pin: { type: String, unique: true },
+    data: Object,
+    lastUpdated: { type: Date, default: Date.now }
+});
+const SessionModel = mongoose.model('Session', sessionSchema);
+
+const resultSchema = new mongoose.Schema({
+    pin: String,
+    fileName: String,
+    testTitle: String,
+    data: Object,
+    timestamp: { type: Date, default: Date.now }
+});
+const ResultModel = mongoose.model('Result', resultSchema);
+
+const studentDbSchema = new mongoose.Schema({
+    token: { type: String, unique: true },
+    name: String,
+    group: String,
+    history: Array
+});
+const StudentModel = mongoose.model('Student', studentDbSchema);
 
 // Global Error Handling
 process.on('uncaughtException', (err) => {
@@ -131,22 +163,40 @@ const SESSIONS_FILE = path.join(__dirname, 'active_sessions.json');
 const groupsDir = path.join(__dirname, 'groups');
 if (!fs.existsSync(groupsDir)) fs.mkdirSync(groupsDir);
 
-function persistActiveSessions() {
+async function persistActiveSessions() {
     try {
+        // Save to local file (Legacy/Local backup)
         fs.writeFileSync(SESSIONS_FILE, JSON.stringify(activeSessions, null, 2));
+        
+        // Save to MongoDB
+        for (const pin in activeSessions) {
+            await SessionModel.findOneAndUpdate(
+                { pin }, 
+                { data: activeSessions[pin], lastUpdated: new Date() }, 
+                { upsert: true }
+            );
+        }
     } catch (e) {
         console.error('[PERSISTENCE] Error saving sessions:', e);
     }
 }
 
-function loadPersistentSessions() {
+async function loadPersistentSessions() {
     try {
-        if (fs.existsSync(SESSIONS_FILE)) {
+        // First try to load from MongoDB
+        const cloudSessions = await SessionModel.find({});
+        if (cloudSessions.length > 0) {
+            Object.keys(activeSessions).forEach(key => delete activeSessions[key]);
+            cloudSessions.forEach(s => {
+                activeSessions[s.pin] = s.data;
+            });
+            console.log(`[PERSISTENCE] Loaded ${cloudSessions.length} sessions from MongoDB.`);
+        } else if (fs.existsSync(SESSIONS_FILE)) {
+            // Fallback to local file
             const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
-            // Clear existing keys to ensure perfect sync
             Object.keys(activeSessions).forEach(key => delete activeSessions[key]);
             Object.assign(activeSessions, data);
-            console.log(`[PERSISTENCE] Reloaded ${Object.keys(activeSessions).length} sessions.`);
+            console.log(`[PERSISTENCE] Loaded ${Object.keys(activeSessions).length} sessions from local file.`);
         }
     } catch (e) {
         console.error('[PERSISTENCE] Error loading sessions:', e);
@@ -188,7 +238,7 @@ io.on('connection', (socket) => {
       }
   });
 
-  socket.on('teacher_restore_session', (filename) => {
+  socket.on('teacher_restore_session', async (filename) => {
       try {
           const filePath = path.join(__dirname, 'results', filename);
           if (!fs.existsSync(filePath)) return;
@@ -233,7 +283,17 @@ io.on('connection', (socket) => {
       return { session: null, student: null };
   }
 
-  socket.on('student_join', (data) => {
+// Add a helper function to safely copy the test without answers
+function getTestForStudent(test) {
+    if (!test || !test.questions) return null;
+    const studentTest = JSON.parse(JSON.stringify(test)); // Deep copy
+    studentTest.questions.forEach(q => {
+        delete q.answer; // Remove the sensitive correct answers
+    });
+    return studentTest;
+}
+
+  socket.on('student_join', async (data) => {
     try {
         if (!data) throw new Error('No data received in student_join');
         const pin = data.pin ? String(data.pin).trim() : null;
@@ -321,10 +381,14 @@ io.on('connection', (socket) => {
             activeSessionObj.students.push(student);
         }
         
-        persistActiveSessions(); // Save new student to disk
+        await persistActiveSessions(); // Save new student to disk
         socket.join(`session_${pin}`);
         io.to('teacher_room').emit('student_update', { pin: pin, students: activeSessionObj.students });
-        socket.emit('start_test', { ...activeTest, questions: student.questions, settings: activeSessionObj.settings });
+        socket.emit('start_test', { ...getTestForStudent(activeTest), questions: student.questions.map(q => {
+            const stripped = { ...q };
+            delete stripped.answer;
+            return stripped;
+        }), settings: activeSessionObj.settings });
 
         try {
             fs.appendFileSync('server.log', `${new Date().toISOString()} - Student ${name} (${group}) joined session ${pin}\n`);
@@ -338,7 +402,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('submit_answer', (data) => {
+  socket.on('submit_answer', async (data) => {
     const { session, student } = findStudentSession(socket.id);
     if (student && session && session.test) {
       const q = session.test.questions.find(q => q.id === data.questionId);
@@ -376,14 +440,14 @@ io.on('connection', (socket) => {
       
       if (Object.keys(student.results).length === student.questions.length) {
           student.endTime = Date.now();
-          autoSaveSession(session.pin);
-          persistActiveSessions(); // Ensure state is saved when someone finishes
+          await autoSaveSession(session.pin);
++          await persistActiveSessions(); // Ensure state is saved when someone finishes
       } else {
           // Debounced save for progress
           if (saveTimeouts[session.pin]) clearTimeout(saveTimeouts[session.pin]);
-          saveTimeouts[session.pin] = setTimeout(() => {
-              autoSaveSession(session.pin);
-              persistActiveSessions();
+          saveTimeouts[session.pin] = setTimeout(async () => {
+              await autoSaveSession(session.pin);
+              await persistActiveSessions();
               delete saveTimeouts[session.pin];
           }, 3000); 
       }
@@ -408,7 +472,7 @@ function checkCorrectness(provided, actual) {
     return pStr === aStr;
 }
 
-  socket.on('cheat_warning', (data) => {
+  socket.on('cheat_warning', async (data) => {
     const { session, student } = findStudentSession(socket.id);
     if (student && data.questionId && session) {
       if (!student.violations.includes(data.questionId)) {
@@ -418,8 +482,8 @@ function checkCorrectness(provided, actual) {
             student.status = 'disqualified';
             student.score = 0; // Annul score
             socket.emit('test_locked', 'Тест заблоковано через часті спроби списування (вихід за межі тесту 3+ рази)!');
-            autoSaveSession(session.pin);
-            persistActiveSessions();
+            await autoSaveSession(session.pin);
+            await persistActiveSessions();
         }
         
         io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
@@ -430,18 +494,18 @@ function checkCorrectness(provided, actual) {
     }
   });
 
-  socket.on('cheat_detected', () => {
+  socket.on('cheat_detected', async () => {
     const { session, student } = findStudentSession(socket.id);
     if (student && session) {
       student.status = 'disqualified';
       student.score = 0;
-      autoSaveSession(session.pin);
-      persistActiveSessions();
+      await autoSaveSession(session.pin);
+      await persistActiveSessions();
       io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
     }
   });
 
-  socket.on('start_test_broadcast', (data) => {
+  socket.on('start_test_broadcast', async (data) => {
     let pin = data.settings.pin ? String(data.settings.pin).trim() : null;
     if (!pin) {
         pin = Math.floor(1000 + Math.random() * 9000).toString();
@@ -471,11 +535,11 @@ function checkCorrectness(provided, actual) {
         settings: data.settings, students: existingStudents, fileName: fileName
     };
     
-    persistActiveSessions();
+    await persistActiveSessions();
     broadcastSessions();
   });
 
-  socket.on('stop_test_broadcast', (pin) => {
+  socket.on('stop_test_broadcast', async (pin) => {
     console.log(`[SESSION] Stop request received for PIN: ${pin}`);
     if (!pin || !activeSessions[pin]) {
         console.log(`[SESSION] Stop aborted: Session ${pin} not found or invalid PIN.`);
@@ -484,13 +548,14 @@ function checkCorrectness(provided, actual) {
     
     try {
         if (saveTimeouts[pin]) clearTimeout(saveTimeouts[pin]);
-        autoSaveSession(pin);
+        await autoSaveSession(pin);
         io.to(`session_${pin}`).emit('stop_test');
         console.log(`[SESSION] Stop event emitted to room session_${pin}`);
         
+        await SessionModel.deleteOne({ pin }); // Remove from cloud
         delete activeSessions[pin];
         delete saveTimeouts[pin];
-        persistActiveSessions();
+        await persistActiveSessions();
         broadcastSessions();
         console.log(`[SESSION] Session ${pin} successfully removed from active list.`);
     } catch (err) {
@@ -498,7 +563,7 @@ function checkCorrectness(provided, actual) {
     }
   });
 
-  socket.on('finish_test', () => {
+  socket.on('finish_test', async () => {
     const { session, student } = findStudentSession(socket.id);
     if (student && session) {
         student.endTime = Date.now();
@@ -508,8 +573,8 @@ function checkCorrectness(provided, actual) {
         const totalPossible = studentQuestions.reduce((sum, q) => sum + (q.score || 1), 0) || 1;
         student.grade12 = Math.round((student.score / totalPossible) * 12);
         
-        autoSaveSession(session.pin);
-        persistActiveSessions();
+        await autoSaveSession(session.pin);
+        await persistActiveSessions();
         socket.emit('test_results', { 
             score: student.score, 
             grade12: student.grade12,
@@ -528,7 +593,7 @@ function checkCorrectness(provided, actual) {
   });
 });
 
-function autoSaveSession(pin) {
+async function autoSaveSession(pin) {
   const session = activeSessions[pin];
   if (!session || !session.test || session.students.length === 0) return;
   
@@ -544,37 +609,60 @@ function autoSaveSession(pin) {
     timestamp: new Date().toISOString()
   };
   
+  // Local Save
   fs.writeFileSync(path.join(resultsDir, session.fileName), JSON.stringify(sessionData, null, 2));
   
-  // Save to students_db.json
+  // MongoDB Save
+  try {
+      await ResultModel.findOneAndUpdate(
+          { pin: session.pin, fileName: session.fileName },
+          { data: sessionData, testTitle: session.test.title, timestamp: new Date() },
+          { upsert: true }
+      );
+  } catch (err) {
+      console.error('[DB] Error saving result to Mongo:', err);
+  }
+
+  // Save to students_db.json & MongoDB StudentModel
   try {
       const dbPath = path.join(__dirname, 'students_db.json');
       let db = {};
       if (fs.existsSync(dbPath)) db = JSON.parse(fs.readFileSync(dbPath));
       
-      session.students.forEach(s => {
-          if (!s.token) return;
+      for (const s of session.students) {
+          if (!s.token) continue;
+          
           if (!db[s.token]) db[s.token] = { name: s.name, group: s.group || 'Інша', history: [] };
           db[s.token].name = s.name;
           db[s.token].group = s.group || 'Інша';
           const testTitle = session.test.title || 'test';
+          
           const existingRun = db[s.token].history.find(h => h.testSessionId === session.id);
+          const historyEntry = {
+              testTitle: testTitle,
+              testSessionId: session.id,
+              score: s.score,
+              grade12: s.grade12,
+              date: new Date().toISOString()
+          };
+
           if (existingRun) {
-              existingRun.score = s.score;
-              existingRun.grade12 = s.grade12;
-              existingRun.date = new Date().toISOString();
+              Object.assign(existingRun, historyEntry);
           } else {
-              db[s.token].history.push({
-                  testTitle: testTitle,
-                  testSessionId: session.id,
-                  score: s.score,
-                  grade12: s.grade12,
-                  date: new Date().toISOString()
-              });
+              db[s.token].history.push(historyEntry);
           }
-      });
+
+          // Duplicate to MongoDB
+          await StudentModel.findOneAndUpdate(
+              { token: s.token },
+              { name: s.name, group: s.group || 'Інша', $addToSet: { history: historyEntry } },
+              { upsert: true }
+          );
+      }
       fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
-  } catch (err) {}
+  } catch (err) {
+      console.error('[DB] Error updating student history:', err);
+  }
 }
 
 // API for Student History
