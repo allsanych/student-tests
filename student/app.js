@@ -44,11 +44,41 @@ function renderMath(element) {
 function formatImageUrl(url) {
     if (!url) return '';
     // Handle Google Drive view links
-    const gdMatch = url.match(/drive\.google\.com\/file\/d\/([^\/\?]+)/);
+    const gdMatch = String(url).match(/drive\.google\.com\/file\/d\/([^\/\?]+)/);
     if (gdMatch && gdMatch[1]) {
         return `https://drive.google.com/uc?export=view&id=${gdMatch[1]}`;
     }
     return url;
+}
+
+function checkBrowserSupport() {
+    const ua = navigator.userAgent;
+    const vendor = navigator.vendor;
+    
+    const isFirefox = ua.indexOf('Firefox') > -1;
+    const isEdge = ua.indexOf('Edg/') > -1;
+    const isOpera = ua.indexOf('OPR/') > -1 || ua.indexOf('Opera/') > -1;
+    const isIE = ua.indexOf('MSIE') > -1 || ua.indexOf('Trident/') > -1;
+    
+    // Built-in mobile browsers (allow those)
+    const isSamsung = ua.indexOf('SamsungBrowser') > -1;
+    const isMiui = ua.indexOf('MiuiBrowser') > -1;
+
+    // Chrome detection (careful with Edge/Opera/Brave which also have 'Chrome')
+    const isChrome = ua.indexOf('Chrome') > -1 && !isEdge && !isOpera;
+    
+    // Safari detection (careful with Chrome/Edge which also have 'Safari')
+    const isSafari = ua.indexOf('Safari') > -1 && !isChrome && !isFirefox && !isEdge && !isOpera;
+    
+    // Block common mobile browsers specifically if they identify differently but user wants to be strict
+    const isMobileForbidden = ua.indexOf('UCBrowser') > -1 || 
+                             ua.indexOf('DuckDuckGo') > -1 ||
+                             ua.indexOf('Brave') > -1 ||
+                             ua.indexOf('Puffin') > -1 ||
+                             ua.indexOf('Mint') > -1;
+
+    if (isMobileForbidden) return false;
+    return isChrome || isFirefox || isSafari || isEdge || isOpera || isIE || isSamsung || isMiui;
 }
 
 document.getElementById('join-btn').onclick = (e) => {
@@ -96,6 +126,15 @@ document.getElementById('join-btn').onclick = (e) => {
 
 // Auto-populate and Group fetch
 window.addEventListener('load', async () => {
+    // Browser support check
+    if (!checkBrowserSupport()) {
+        const joinSec = document.getElementById('join-section');
+        const errSec = document.getElementById('browser-error-section');
+        if (joinSec) joinSec.classList.add('hidden');
+        if (errSec) errSec.classList.remove('hidden');
+        return; // Stop further initialization
+    }
+
     const groupSelect = document.getElementById('student-group');
     const nameSelect = document.getElementById('student-name-select');
     const nameInput = document.getElementById('student-name-input');
