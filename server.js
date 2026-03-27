@@ -441,7 +441,7 @@ function getTestForStudent(test) {
       if (Object.keys(student.results).length === student.questions.length) {
           student.endTime = Date.now();
           await autoSaveSession(session.pin);
-+          await persistActiveSessions(); // Ensure state is saved when someone finishes
+          await persistActiveSessions(); // Ensure state is saved when someone finishes
       } else {
           // Debounced save for progress
           if (saveTimeouts[session.pin]) clearTimeout(saveTimeouts[session.pin]);
@@ -453,6 +453,15 @@ function getTestForStudent(test) {
       }
 
       io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
+
+      // Send feedback back to the student if enabled
+      if (session.settings && session.settings.showFeedback) {
+          socket.emit('answer_feedback', { 
+              questionId: data.questionId, 
+              isCorrect: isCorrect, 
+              correctAnswer: q.answer 
+          });
+      }
     }
   });
 

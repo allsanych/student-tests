@@ -507,18 +507,21 @@ window.submitAnswer = (ans) => {
     const q = currentTest.questions[currentQIndex];
     localAnswers[q.id] = ans;
     saveLocalProgress();
-
-    // Fuzzy matching for local feedback
-    const isCorrect = checkCorrectness(ans, q.answer);
     
     socket.emit('submit_answer', { questionId: q.id, answer: ans });
 
     if (currentTest.settings && currentTest.settings.showFeedback) {
-        showFeedback(isCorrect, q.answer);
+        // We'll wait for 'answer_feedback' event
     } else {
         nextQuestion();
     }
 };
+
+socket.on('answer_feedback', (data) => {
+    if (currentTest.settings && currentTest.settings.showFeedback) {
+        showFeedback(data.isCorrect, data.correctAnswer);
+    }
+});
 
 function saveLocalProgress() {
     if (!currentTest) return;
