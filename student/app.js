@@ -290,17 +290,63 @@ function triggerCheatWarning() {
     }, 200);
 }
 
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') triggerCheatWarning(); });
-window.addEventListener('blur', () => triggerCheatWarning());
+document.addEventListener('visibilitychange', () => { 
+    if (document.visibilityState === 'hidden') triggerCheatWarning(); 
+});
+
+window.addEventListener('blur', () => {
+    // Some mobile browsers trigger blur on split-screen entry
+    triggerCheatWarning(); 
+});
+
 window.addEventListener('resize', () => { 
-    // Ignore resize if an input is focused (keyboard opening/closing)
+    checkViewportIntegrity();
+});
+
+function checkViewportIntegrity() {
+    if (!currentTest) return;
+
     const activeEl = document.activeElement;
     const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+    
+    // If input is focused, we assume the keyboard is open and skip resize/aspect-ratio checks
     if (isInputFocused) return;
 
-    // More lenient threshold for mobile keyboards
-    if (currentTest && window.innerHeight < initialHeight * 0.5) triggerCheatWarning(); 
-});
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const screenW = window.screen.width;
+    const screenH = window.screen.height;
+
+    // 1. Check for suspicious split-screen proportions
+    // If the browser window is significantly narrower/shorter than the device screen
+    const widthRatio = width / screenW;
+    const heightRatio = height / screenH;
+
+    // Thresholds: if browser occupies less than 85% of screen width or height (outside of keyboard)
+    // We only check width for portrait and height for landscape
+    const isPortrait = height > width;
+    
+    let isSplitDetected = false;
+    if (isPortrait && widthRatio < 0.85) isSplitDetected = true;
+    if (!isPortrait && heightRatio < 0.85) isSplitDetected = true;
+
+    // 2. Minimum absolute dimensions (e.g. split-screen 50/50 on a phone)
+    if (width < 350 || height < 350) isSplitDetected = true;
+
+    if (isSplitDetected) {
+        triggerCheatWarning();
+    }
+}
+
+// Heartbeat check (every 3 seconds)
+setInterval(() => {
+    if (currentTest && !testSection.classList.contains('hidden')) {
+        if (!document.hasFocus()) {
+            triggerCheatWarning();
+        }
+        checkViewportIntegrity();
+    }
+}, 3000);
 
 function startTimer(seconds) {
     clearInterval(timerInterval);

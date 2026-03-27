@@ -119,6 +119,26 @@
         "score": 0,
         "grade12": 0,
         "date": "2026-03-27T06:12:40.387Z"
+      },
+      {
+        "testTitle": "Демонстраційний тест НМТ з математики",
+        "testSessionId": "MN7HO2NI",
+        "score": 0,
+        "grade12": 0,
+        "date": "2026-03-27T09:45:44.723Z"
+      }
+    ]
+  },
+  "std_1ti88n2utmn7hgcfu": {
+    "name": "я",
+    "group": "Інша",
+    "history": [
+      {
+        "testTitle": "Демонстраційний тест НМТ з математики",
+        "testSessionId": "MN7HO2NI",
+        "score": 24,
+        "grade12": 10,
+        "date": "2026-03-27T09:45:43.897Z"
       }
     ]
   }

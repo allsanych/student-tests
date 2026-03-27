@@ -488,13 +488,13 @@ function checkCorrectness(provided, actual) {
       if (!student.violations.includes(data.questionId)) {
         student.violations.push(data.questionId);
         
-        if (student.violations.length >= 3) {
-            student.status = 'disqualified';
-            student.score = 0; // Annul score
-            socket.emit('test_locked', 'Тест заблоковано через часті спроби списування (вихід за межі тесту 3+ рази)!');
-            await autoSaveSession(session.pin);
-            await persistActiveSessions();
-        }
+        // if (student.violations.length >= 3) {
+        //     student.status = 'disqualified';
+        //     student.score = 0; // Annul score
+        //     socket.emit('test_locked', 'Тест заблоковано через часті спроби списування (вихід за межі тесту 3+ рази)!');
+        //     await autoSaveSession(session.pin);
+        //     await persistActiveSessions();
+        // }
         
         io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
         try {

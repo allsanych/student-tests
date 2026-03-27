@@ -8,7 +8,7 @@
   --accent: #f59e0b;
   --success: #10b981;
   --error: #ef4444;
-  --skipped: #3b82f6;
+  --warning: #f59e0b;
   --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 }
 
