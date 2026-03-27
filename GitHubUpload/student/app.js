@@ -430,13 +430,19 @@ function handleTimeUp() {
 
 function renderQuestion() {
     try {
-        cheatWarningBanner.classList.add('hidden');
         if (!currentTest || !currentTest.questions) {
             testSection.innerHTML = '<div class="card"><h2>Очікування завантаження питань...</h2></div>';
             return;
         }
 
         const q = currentTest.questions[currentQIndex];
+        
+        // Restore warning banner if this question was already compromised
+        if (q.isViolated) {
+            cheatWarningBanner.classList.remove('hidden');
+        } else {
+            cheatWarningBanner.classList.add('hidden');
+        }
         if (!q) {
             clearInterval(timerInterval);
             socket.emit('finish_test');

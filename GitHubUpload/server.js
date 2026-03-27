@@ -333,8 +333,19 @@ function getTestForStudent(test) {
             return socket.emit('join_error', 'Помилка завантаження тесту: немає питань.');
         }
         
-        // Check if student with this name already exists in this session
-        let student = activeSessionObj.students.find(s => s && s.name === name);
+        // Improved lookup: try Token first, then Name
+        const studentToken = data.token ? String(data.token).trim() : null;
+        let student = null;
+        
+        if (studentToken) {
+            student = activeSessionObj.students.find(s => s && s.token === studentToken);
+        }
+        
+        if (!student) {
+            // Fallback to name matching (trim common suffixes/prefixes if needed, but here just trim)
+            const normalizedName = name.trim().toLowerCase();
+            student = activeSessionObj.students.find(s => s && s.name.trim().toLowerCase() === normalizedName);
+        }
         
         if (student) {
             // Re-joining existing student: update socket ID
@@ -389,6 +400,8 @@ function getTestForStudent(test) {
         socket.emit('start_test', { ...getTestForStudent(activeTest), questions: student.questions.map(q => {
             const stripped = { ...q };
             delete stripped.answer;
+            // Mark if this question has already been violated by this student
+            stripped.isViolated = student.violations.includes(q.id) || (student.results[q.id] && student.results[q.id].isViolated);
             return stripped;
         }), settings: activeSessionObj.settings });
 
