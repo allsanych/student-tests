@@ -188,7 +188,16 @@ function updateProgressGrid(students, containerId = 'students-progress-grid') {
         if (questionsToUse) {
             questionsToUse.forEach(q => {
                 const res = s.results[q.id];
-                let color = res ? (res.isCorrect ? 'var(--success)' : 'var(--error)') : 'var(--skipped)';
+                const isViolatedLive = s.violations && s.violations.includes(q.id);
+                
+                let color = 'var(--skipped)';
+                if (res) {
+                    if (res.isViolated) color = 'var(--warning)';
+                    else if (res.isCorrect) color = 'var(--success)';
+                    else color = 'var(--error)';
+                } else if (isViolatedLive) {
+                    color = 'var(--warning)'; // Show orange even before submission
+                }
                 progressHtml += `<div title="${q.text.substring(0, 50)}..." style="width:15px;height:15px;background:${color};border-radius:3px;cursor:help;"></div>`;
             });
         }

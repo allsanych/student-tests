@@ -333,38 +333,39 @@ function getTestForStudent(test) {
             return socket.emit('join_error', 'Помилка завантаження тесту: немає питань.');
         }
         
-        let studentQuestions = [...activeTest.questions];
-        
-        // Randomization Logic
-        if (activeSessionObj.settings) {
-          if (activeSessionObj.settings.shuffleQuestions || activeSessionObj.settings.pickCount) {
-            studentQuestions = shuffleArray(studentQuestions);
-          }
-          if (activeSessionObj.settings.shuffleAnswers) {
-            studentQuestions = studentQuestions.map(q => {
-              if (q.options && Array.isArray(q.options)) {
-                return { ...q, options: shuffleArray(q.options) };
-              }
-              return q;
-            });
-          }
-          if (activeSessionObj.settings.pickCount && activeSessionObj.settings.pickCount < studentQuestions.length) {
-              studentQuestions = studentQuestions.slice(0, activeSessionObj.settings.pickCount);
-          }
-        }
-
         // Check if student with this name already exists in this session
         let student = activeSessionObj.students.find(s => s && s.name === name);
         
         if (student) {
-            // Re-joining existing student: update socket ID and questions
+            // Re-joining existing student: update socket ID
+            // IMPORTANT: We do NOT re-generate student.questions here because they 
+            // might be shuffled, and the student app depends on the order and IDs 
+            // being consistent with their localStorage progress.
             student.id = socket.id;
             student.status = 'online';
             if (!student.startTime) student.startTime = Date.now();
-            student.questions = studentQuestions; // Refresh questions on join
-            student.group = group; // Update group
+            // student.questions remains the same as when they first joined
+            student.group = group; // Update group if changed
         } else {
-            // New student
+            // New student: Generate their specific questions list (apply shuffling/picking once)
+            let studentQuestions = [...activeTest.questions];
+            if (activeSessionObj.settings) {
+                if (activeSessionObj.settings.shuffleQuestions) {
+                    studentQuestions = shuffleArray(studentQuestions);
+                }
+                if (activeSessionObj.settings.shuffleAnswers) {
+                    studentQuestions = studentQuestions.map(q => {
+                        if (q.options && Array.isArray(q.options)) {
+                            return { ...q, options: shuffleArray(q.options) };
+                        }
+                        return q;
+                    });
+                }
+                if (activeSessionObj.settings.pickCount && activeSessionObj.settings.pickCount < studentQuestions.length) {
+                    studentQuestions = studentQuestions.slice(0, activeSessionObj.settings.pickCount);
+                }
+            }
+
             student = { 
               id: socket.id, 
               token: data.token,
@@ -374,7 +375,7 @@ function getTestForStudent(test) {
               violations: [], 
               score: 0, 
               status: 'online',
-              questions: studentQuestions,
+              questions: studentQuestions, // This will be the randomized one for this student
               results: {},
               startTime: Date.now(),
               endTime: null
@@ -488,14 +489,10 @@ function checkCorrectness(provided, actual) {
       if (!student.violations.includes(data.questionId)) {
         student.violations.push(data.questionId);
         
-        // if (student.violations.length >= 3) {
-        //     student.status = 'disqualified';
-        //     student.score = 0; // Annul score
-        //     socket.emit('test_locked', 'Тест заблоковано через часті спроби списування (вихід за межі тесту 3+ рази)!');
-        //     await autoSaveSession(session.pin);
-        //     await persistActiveSessions();
-        // }
-        
+        // Persist immediately so that refresh doesn't clear the violation
+        await autoSaveSession(session.pin);
+        await persistActiveSessions();
+
         io.to('teacher_room').emit('student_update', { pin: session.pin, students: session.students });
         try {
             fs.appendFileSync('server.log', `${new Date().toISOString()} - Student ${student.name} warned for cheating on question ${data.questionId}. Total violations: ${student.violations.length}\n`);
