@@ -94,11 +94,26 @@
             <div style="display: flex; align-items: center; gap: 10px;">
                 <span style="font-size: 1.5rem;">⚠️</span>
                 <div>
-                    <strong style="color: var(--error);">Вихід за межі тесту!</strong>
-                    <p style="margin: 0; font-size: 0.9rem;">Відповідь на це питання <strong>не буде зарахована</strong> (0 балів).</p>
+                    <strong style="color: var(--error);">Вихід за межі тесту (або розділений екран)!</strong>
+                    <p style="margin: 0; font-size: 0.9rem;">Відповідь на це питання <strong>не зарахована</strong> (0 балів).</p>
                 </div>
             </div>
         </div>
+
+        <section id="browser-error-section" class="card hidden" style="text-align: center; border: 2px solid var(--error);">
+            <h2 style="color: var(--error);">Браузер не підтримується</h2>
+            <p>Для проходження тесту, будь ласка, використовуйте один з підтримуваних браузерів:</p>
+            <ul style="list-style: none; padding: 0; margin: 20px 0; font-weight: bold; font-size: 1.2rem; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;">
+                <li style="background: #f0f4ff; padding: 5px 15px; border-radius: 20px; color: var(--primary);">Chrome</li>
+                <li style="background: #f0f4ff; padding: 5px 15px; border-radius: 20px; color: var(--primary);">Firefox</li>
+                <li style="background: #f0f4ff; padding: 5px 15px; border-radius: 20px; color: var(--primary);">Safari</li>
+                <li style="background: #f0f4ff; padding: 5px 15px; border-radius: 20px; color: var(--primary);">Edge</li>
+                <li style="background: #f0f4ff; padding: 5px 15px; border-radius: 20px; color: var(--primary);">Opera</li>
+                <li style="background: #f0f4ff; padding: 5px 15px; border-radius: 20px; color: var(--primary);">Explorer</li>
+                <li style="background: #f0f4ff; padding: 5px 15px; border-radius: 20px; color: var(--primary);">Mi / Samsung / Вбудовані</li>
+            </ul>
+            <p style="font-size: 0.9rem; color: #666;">Використання сторонніх браузерів (UC, DuckDuckGo, Brave тощо) заборонено для забезпечення чесності тестування.</p>
+        </section>
 
         <section id="finished-section" class="card hidden" style="text-align: center;">
             <h2 style="color: var(--success); margin-bottom: 10px;">Тест завершено!</h2>

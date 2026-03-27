@@ -41,6 +41,46 @@ function renderMath(element) {
     }
 }
 
+function formatImageUrl(url) {
+    if (!url) return '';
+    // Handle Google Drive view links
+    const gdMatch = String(url).match(/drive\.google\.com\/file\/d\/([^\/\?]+)/);
+    if (gdMatch && gdMatch[1]) {
+        return `https://drive.google.com/uc?export=view&id=${gdMatch[1]}`;
+    }
+    return url;
+}
+
+function checkBrowserSupport() {
+    const ua = navigator.userAgent;
+    const vendor = navigator.vendor;
+    
+    const isFirefox = ua.indexOf('Firefox') > -1;
+    const isEdge = ua.indexOf('Edg/') > -1;
+    const isOpera = ua.indexOf('OPR/') > -1 || ua.indexOf('Opera/') > -1;
+    const isIE = ua.indexOf('MSIE') > -1 || ua.indexOf('Trident/') > -1;
+    
+    // Built-in mobile browsers (allow those)
+    const isSamsung = ua.indexOf('SamsungBrowser') > -1;
+    const isMiui = ua.indexOf('MiuiBrowser') > -1;
+
+    // Chrome detection (careful with Edge/Opera/Brave which also have 'Chrome')
+    const isChrome = ua.indexOf('Chrome') > -1 && !isEdge && !isOpera;
+    
+    // Safari detection (careful with Chrome/Edge which also have 'Safari')
+    const isSafari = ua.indexOf('Safari') > -1 && !isChrome && !isFirefox && !isEdge && !isOpera;
+    
+    // Block common mobile browsers specifically if they identify differently but user wants to be strict
+    const isMobileForbidden = ua.indexOf('UCBrowser') > -1 || 
+                             ua.indexOf('DuckDuckGo') > -1 ||
+                             ua.indexOf('Brave') > -1 ||
+                             ua.indexOf('Puffin') > -1 ||
+                             ua.indexOf('Mint') > -1;
+
+    if (isMobileForbidden) return false;
+    return isChrome || isFirefox || isSafari || isEdge || isOpera || isIE || isSamsung || isMiui;
+}
+
 document.getElementById('join-btn').onclick = (e) => {
     const groupSelect = document.getElementById('student-group');
     const nameSelect = document.getElementById('student-name-select');
@@ -86,6 +126,15 @@ document.getElementById('join-btn').onclick = (e) => {
 
 // Auto-populate and Group fetch
 window.addEventListener('load', async () => {
+    // Browser support check
+    if (!checkBrowserSupport()) {
+        const joinSec = document.getElementById('join-section');
+        const errSec = document.getElementById('browser-error-section');
+        if (joinSec) joinSec.classList.add('hidden');
+        if (errSec) errSec.classList.remove('hidden');
+        return; // Stop further initialization
+    }
+
     const groupSelect = document.getElementById('student-group');
     const nameSelect = document.getElementById('student-name-select');
     const nameInput = document.getElementById('student-name-input');
@@ -290,17 +339,63 @@ function triggerCheatWarning() {
     }, 200);
 }
 
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') triggerCheatWarning(); });
-window.addEventListener('blur', () => triggerCheatWarning());
+document.addEventListener('visibilitychange', () => { 
+    if (document.visibilityState === 'hidden') triggerCheatWarning(); 
+});
+
+window.addEventListener('blur', () => {
+    // Some mobile browsers trigger blur on split-screen entry
+    triggerCheatWarning(); 
+});
+
 window.addEventListener('resize', () => { 
-    // Ignore resize if an input is focused (keyboard opening/closing)
+    checkViewportIntegrity();
+});
+
+function checkViewportIntegrity() {
+    if (!currentTest) return;
+
     const activeEl = document.activeElement;
     const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+    
+    // If input is focused, we assume the keyboard is open and skip resize/aspect-ratio checks
     if (isInputFocused) return;
 
-    // More lenient threshold for mobile keyboards
-    if (currentTest && window.innerHeight < initialHeight * 0.5) triggerCheatWarning(); 
-});
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const screenW = window.screen.width;
+    const screenH = window.screen.height;
+
+    // 1. Check for suspicious split-screen proportions
+    // If the browser window is significantly narrower/shorter than the device screen
+    const widthRatio = width / screenW;
+    const heightRatio = height / screenH;
+
+    // Thresholds: if browser occupies less than 85% of screen width or height (outside of keyboard)
+    // We only check width for portrait and height for landscape
+    const isPortrait = height > width;
+    
+    let isSplitDetected = false;
+    if (isPortrait && widthRatio < 0.85) isSplitDetected = true;
+    if (!isPortrait && heightRatio < 0.85) isSplitDetected = true;
+
+    // 2. Minimum absolute dimensions (e.g. split-screen 50/50 on a phone)
+    if (width < 350 || height < 350) isSplitDetected = true;
+
+    if (isSplitDetected) {
+        triggerCheatWarning();
+    }
+}
+
+// Heartbeat check (every 3 seconds)
+setInterval(() => {
+    if (currentTest && !testSection.classList.contains('hidden')) {
+        if (!document.hasFocus()) {
+            triggerCheatWarning();
+        }
+        checkViewportIntegrity();
+    }
+}, 3000);
 
 function startTimer(seconds) {
     clearInterval(timerInterval);
@@ -399,12 +494,14 @@ function renderQuestion() {
             
             inputHtml = `<div class="matching-container" style="display: flex; flex-direction: column; gap: 10px;">
                 ${lefts.map((l, i) => `
-                    <div style="display: flex; gap: 10px; align-items: stretch;">
+                    <div style="display: flex; gap: 10px; align-items: stretch; position: relative;">
                         <div style="flex: 1; padding: 12px; border: 1px solid var(--primary); background: #e0e7ff; border-radius: 8px; display: flex; align-items: center; font-size: 0.95rem;">${l}</div>
-                        <select id="match-ans-${i}" style="flex: 1; min-width: 0; padding: 12px; border-radius: 8px; border: 1px solid #ddd; background: #fff;" data-left="${l}">
-                            <option value="">-- Оберіть --</option>
-                            ${rights.map(r => `<option value="${r}">${r}</option>`).join('')}
-                        </select>
+                        <div class="custom-select-container" id="match-container-${i}">
+                            <div class="custom-select-trigger" onclick="toggleMatchingSelect(${i})" id="match-trigger-${i}" data-value="" data-left="${l.replace(/"/g, '&quot;')}">-- Оберіть --</div>
+                            <div class="custom-select-options">
+                                ${rights.map(r => `<div class="custom-select-option" onclick="selectMatchingOption(${i}, '${r.replace(/'/g, "\\'")}')">${r}</div>`).join('')}
+                            </div>
+                        </div>
                     </div>
                 `).join('')}
             </div>
@@ -413,7 +510,7 @@ function renderQuestion() {
 
         qContainer.innerHTML = `
             <div class="card question-card">
-                ${q.image ? `<img src="${q.image}" style="max-width: 100%; max-height: 300px; display: block; margin: 0 auto 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">` : ''}
+                ${q.image ? `<img src="${formatImageUrl(q.image)}" style="max-width: 100%; max-height: 300px; display: block; margin: 0 auto 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">` : ''}
                 <div style="font-size: 1.3rem; margin-bottom: 2rem; line-height: 1.6; user-select: none;" onclick="event.stopPropagation()">${q.text}</div>
                 <div id="inputs-container">${inputHtml}</div>
                 <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
@@ -470,12 +567,34 @@ window.submitMatching = () => {
     if (!q.pairs) return;
     const ans = {};
     for (let i = 0; i < q.pairs.length; i++) {
-        const select = document.getElementById(`match-ans-${i}`);
-        if (!select.value) return alert('Знайдіть пару для всіх елементів');
-        ans[select.dataset.left] = select.value;
+        const trigger = document.getElementById(`match-trigger-${i}`);
+        const val = trigger.dataset.value;
+        if (!val) return alert('Знайдіть пару для всіх елементів');
+        ans[trigger.dataset.left] = val;
     }
     submitAnswer(ans);
 };
+
+window.toggleMatchingSelect = (index) => {
+    const container = document.getElementById(`match-container-${index}`);
+    const isOpen = container.classList.contains('open');
+    document.querySelectorAll('.custom-select-container').forEach(c => c.classList.remove('open'));
+    if (!isOpen) container.classList.add('open');
+};
+
+window.selectMatchingOption = (index, value) => {
+    const trigger = document.getElementById(`match-trigger-${index}`);
+    trigger.innerText = value;
+    trigger.dataset.value = value;
+    document.getElementById(`match-container-${index}`).classList.remove('open');
+    renderMath(trigger);
+};
+
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-select-container')) {
+        document.querySelectorAll('.custom-select-container').forEach(c => c.classList.remove('open'));
+    }
+});
 
 window.submitAnswer = (ans) => {
     if (perQuestionTimer) clearInterval(timerInterval);
@@ -483,18 +602,21 @@ window.submitAnswer = (ans) => {
     const q = currentTest.questions[currentQIndex];
     localAnswers[q.id] = ans;
     saveLocalProgress();
-
-    // Fuzzy matching for local feedback
-    const isCorrect = checkCorrectness(ans, q.answer);
     
     socket.emit('submit_answer', { questionId: q.id, answer: ans });
 
     if (currentTest.settings && currentTest.settings.showFeedback) {
-        showFeedback(isCorrect, q.answer);
+        // We'll wait for 'answer_feedback' event
     } else {
         nextQuestion();
     }
 };
+
+socket.on('answer_feedback', (data) => {
+    if (currentTest.settings && currentTest.settings.showFeedback) {
+        showFeedback(data.isCorrect, data.correctAnswer);
+    }
+});
 
 function saveLocalProgress() {
     if (!currentTest) return;
